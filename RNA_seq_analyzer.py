@@ -155,9 +155,9 @@ class RNASeqAnalyzer:
 if __name__ == '__main__':
     read1 = r'./example_data/seq_data/A1.raw_1.fastq.gz'
     read2 = r'./example_data/seq_data/A1.raw_2.fastq.gz'
-    gff_file = r'./example_data/annotation_file/NC_000913.3.gff3'
+    gff_file = r'./example_data/annotation_file/CLB_strain.gff'
     sample_name = 'CaoLB'
-    ref_ps = r'./example_data/annotation_file/NC_000913.3.fasta'
+    ref_ps = r'./example_data/annotation_file/CLB_strain.fa'
     adapters = ['AGATCGGAAGAGC', 'AGATCGGAAGAGC']
     sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=gff_file,
                             seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32}, adapter=adapters)

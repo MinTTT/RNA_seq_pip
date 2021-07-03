@@ -33,8 +33,12 @@ class GeneFeature:
         self.start = start
         self.end = end
         self.strand = strand
+        self.annotation = annotation
         self.parse_annotation(annotation)
         self.length = self.end - self.start + 1
+
+    def __str__(self):
+        return self.annotation
 
     def parse_annotation(self, annotation):
         for anno in annotation.split(';'):
@@ -273,8 +277,12 @@ class BAMile:
             [self.reverse_coverage_data[genome]['coverage'].sum() for genome in self.genome_set]) + \
                             np.sum([self.forward_coverage_data[genome]['coverage'].sum() for genome in self.genome_set])
         for genome in self.genome_set:
-            self.reverse_coverage_data[genome]['coverage'] /= (self.coverage_all / 1e9)
-            self.forward_coverage_data[genome]['coverage'] /= (self.coverage_all / 1e9)
+            self.reverse_coverage_data[genome].loc[:, 'coverage'] = self.reverse_coverage_data[genome]['coverage'] / \
+                                                                    (self.coverage_all / 1e9)
+            self.forward_coverage_data[genome].loc[:, 'coverage'] = self.forward_coverage_data[genome]['coverage'] / \
+                                                                    (self.coverage_all / 1e9)
+            # self.reverse_coverage_data[genome]['coverage'] /= (self.coverage_all / 1e9)
+            # self.forward_coverage_data[genome]['coverage'] /= (self.coverage_all / 1e9)
         return None
 
     def fetch_coverage(self, genome, start, end, strand=None, move_average: int = None):
@@ -336,7 +344,19 @@ def count_reads_custom(bam_ps: str, gff_ps: str, feature: str = 'CDS') -> Tuple[
     reads_stat = []
     print(f"[{os.path.basename(bam_ps)}] -> Counting reads")
     for cds in tqdm(cds_list):
-        info = [cds.gene, cds.locus_tag, cds.product, cds.length, cds.strand,
+        try:
+            gene_name = cds.gene
+        except AttributeError:
+            try:
+                gene_name = cds.Name
+            except AttributeError:
+                try:
+                    gene_name = cds.ID
+                except AttributeError:
+                    print(cds)
+
+
+        info = [gene_name, cds.locus_tag, cds.product, cds.length, cds.strand,
                 bamflie.count_cds_reads(cds.genome, cds.start, cds.end, cds.strand)]
         reads_stat.append(info)
     print(f"[{os.path.basename(bam_ps)}] -> Counting coverage")
@@ -382,7 +402,8 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     reads_info_tsv = count_tsv.loc[reverse_cds_mask]
     # print(cds_tsv)
     # print(reads_info_tsv)
-    all_reads = np.sum(cds_tsv['htseq_counts']) + reads_info_tsv[reads_info_tsv[id] == '__no_feature']['htseq_counts'].values \
+    all_reads = np.sum(cds_tsv['htseq_counts']) + reads_info_tsv[reads_info_tsv[id] == '__no_feature'][
+        'htseq_counts'].values \
                 + reads_info_tsv[reads_info_tsv[id] == '__ambiguous']['htseq_counts'].values
     return cds_tsv, all_reads
 
