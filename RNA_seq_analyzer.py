@@ -136,11 +136,10 @@ class RNASeqAnalyzer:
     def counts_statistic(self):
         print(f'[{self.sample_name}] -> reads counting.')
         print(self.bam_sorted_ps)
-        counts_stat, bam, status6 = count_feature_reads(self.bam_sorted_ps, self.gff_ps)
+        counts_stat, bam = count_feature_reads(self.bam_sorted_ps, self.gff_ps)
         self.__dict__['counts_stat'] = counts_stat
         self.__dict__['gene_dict'] = bam.gene_features
         self.__dict__['bam'] = bam
-        self.append_to_log(status6)
         counts_stat.to_csv(self.counts_statistic_ps)
 
     def cmd_shell(self, cmd: str):
