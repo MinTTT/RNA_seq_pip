@@ -71,7 +71,7 @@ class RNASeqAnalyzer:
         self.bam_ps = os.path.join(self.output_dir, self.sample_name + '.bam')
         self.bam_sorted_ps = os.path.join(self.output_dir, self.sample_name + '.sorted.bam')
         self.bam_index_ps = self.bam_sorted_ps + '.bai'
-        self.counts_statistic_ps = os.path.join(self.output_dir, self.sample_name + '.counts_statistic.csv')
+        self.counts_statistic_ps = os.path.join(self.output_dir, self.sample_name + '.expression_statistic.csv')
         self.file_in_dir = os.listdir(self.output_dir)
         self.log_file_ps = os.path.join(self.output_dir, self.sample_name + '.log')
         self.log_file = open(self.log_file_ps, 'w')
