@@ -71,6 +71,6 @@ for sample in sample_pars_list:
     sample_name = sample['name']
     sample_replicates = list(set([fafile.strip(fafile.split('_')[-1])[0:-1] for fafile in sample_fa]))
     for replicate in sample_replicates:
-        cmd_cp = f"cp {os.path.join(save_dir, replicate + '_output', replicate + '.counts_statistic.csv')} " + \
-                 f"{os.path.join(save_dir, replicate + '.counts_statistic.csv')}"
+        cmd_cp = f"cp {os.path.join(save_dir, replicate + '_output', replicate + '.expression_statistic.csv')} " + \
+                 f"{os.path.join(save_dir, replicate + '.expression_statistic.csv')}"
         sbps.run(cmd_cp, shell=True)

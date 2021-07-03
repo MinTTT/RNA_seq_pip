@@ -273,6 +273,7 @@ class BAMile:
         genome_set = list(set(rev_tsv['genome'].tolist()))
         self.reverse_coverage_data = {genome: rev_tsv[rev_tsv['genome'] == genome] for genome in genome_set}
         self.genome_set = genome_set
+
         self.coverage_all = np.sum(
             [self.reverse_coverage_data[genome]['coverage'].sum() for genome in self.genome_set]) + \
                             np.sum([self.forward_coverage_data[genome]['coverage'].sum() for genome in self.genome_set])
@@ -354,7 +355,6 @@ def count_reads_custom(bam_ps: str, gff_ps: str, feature: str = 'CDS') -> Tuple[
                     gene_name = cds.ID
                 except AttributeError:
                     print(cds)
-
 
         info = [gene_name, cds.locus_tag, cds.product, cds.length, cds.strand,
                 bamflie.count_cds_reads(cds.genome, cds.start, cds.end, cds.strand)]
