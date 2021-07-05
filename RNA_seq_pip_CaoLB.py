@@ -19,23 +19,6 @@ import numpy as np  # Or any other
 from RNA_seq_analyzer import RNASeqAnalyzer
 import _thread as thread
 
-# […]
-
-# Own modules
-
-save_dir = r"/media/fulab/TOSHIBA_EXT/andong_rnaseq_rets"
-
-sample_dir = r"/home/fulab/data/andong_rna/Clean"
-
-sample_names = os.listdir(sample_dir)
-
-sample_pars_list = [dict(name=sample, fasta_file=os.listdir(os.path.join(sample_dir, sample))) for sample in
-                    sample_names]
-
-genome_fa = "./example_data/annotation_file/NC_000913.3.fasta"
-gff = "./example_data/annotation_file/NC_000913.3.gff3"
-
-seq_data_suffix = '.fq.gz'
 
 def stat_thread(obj: RNASeqAnalyzer, thread_index: int):
     obj.counts_statistic()
@@ -43,26 +26,46 @@ def stat_thread(obj: RNASeqAnalyzer, thread_index: int):
     return None
 
 
+# […]
+
+# Own modules
+
+save_dir = r"/media/fulab/TOSHIBA_EXT/CaoLB"
+
+sample_dir = r"/media/fulab/TOSHIBA_EXT/raw_data"
+
+sample_names = os.listdir(sample_dir)
+
+sample_pars_list = [dict(name=sample, fasta_file=os.listdir(os.path.join(sample_dir, sample))) for sample in
+                    sample_names]
+
+genome_fa = r'./example_data/annotation_file/CLB_strain.fa'
+gff = r'./example_data/annotation_file/CLB_strain.gff'
+adapters = ['AGATCGGAAGAGC', 'AGATCGGAAGAGC']
+seq_data_suffix = '.fastq.gz'
+
+threading_max = 3
+
 thread_exit = []
 thread_init = 0
 for sample in sample_pars_list:
     sample_fa = sample['fasta_file']
     sample_name = sample['name']
-    sample_replicates = list(set([fafile.strip(fafile.split('_')[-1])[0:-1] for fafile in sample_fa]))
+    sample_replicates = list(set([fa_fl.strip(fa_fl.split('_')[-1])[0:-1] for fa_fl in sample_fa]))
     for replicate in sample_replicates:
 
         print(f'[{replicate}] -> Processing Now')
         fa1 = os.path.join(sample_dir, sample_name, replicate + '_1' + seq_data_suffix)
         fa2 = os.path.join(sample_dir, sample_name, replicate + '_2' + seq_data_suffix)
         process_pip = RNASeqAnalyzer(replicate, genome_fa, gff_ps=gff, seq_ps1=fa1, seq_ps2=fa2,
-                                     bowtie_pars={"-p": 64}, output_dir=save_dir)
+                                     adapter=adapters,
+                                     bowtie_pars={"-p": 32}, output_dir=save_dir)
         process_pip.seq_data_align()
         thread_exit.append(False)
         thread.start_new_thread(stat_thread, (process_pip, thread_init))
         thread_init += 1
-        while sum([True if sg == False else False for sg in thread_exit]) >= 3:
+        while sum([True if sg is False else False for sg in thread_exit]) >= threading_max:
             sleep(10)
-
 
 while False in thread_exit:
     sleep(5)

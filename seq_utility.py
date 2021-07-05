@@ -77,6 +77,26 @@ def gff_parser(gff_ps: str) -> dict:
     return gene_dict
 
 
+def fasta_parser(fasta_ps: str):
+    with open(fasta_ps, 'r') as fa_fl:
+        content = fa_fl.readlines()
+        lines = [line.strip('\n') for line in content]
+        genomes = dict()
+        for line in lines:
+            if line[0] == '>':
+                name_comments = line[1:].split(' ')
+                name = name_comments[0]
+                genomes[name] = ''
+            else:
+                genomes[name] += line.replace(' ', '')
+    return genomes
+
+
+
+
+
+
+
 def check_reverse(reads):
     if reads.is_proper_pair:
         read1 = reads.is_read1 and reads.is_reverse
@@ -96,7 +116,7 @@ def check_forward(reads):
 
 
 class BAMile:
-    def __init__(self, bam_ps, gff_ps=None, threads=16):
+    def __init__(self, bam_ps, gff_ps=None, fasta_ps=None, threads=16):
         self.bam_ps = bam_ps
         self.bam_name = os.path.basename(self.bam_ps)
         self.dir = os.path.split(self.bam_ps)[0]
@@ -106,8 +126,7 @@ class BAMile:
         self.reads_reverse_strand_ps = None
         self.forward_coverage_ps = None
         self.reverse_coverage_ps = None
-        self.forward_coverage_data = None
-        self.reverse_coverage_data = None
+
         self.genome_set = None
         self.coverage_all = None
         self.mapped_reads = self.bam.mapped
@@ -120,6 +139,13 @@ class BAMile:
         self.removed_rev_bam_ps = None
         self.rtRNA_clean_flag = False
         self.files = None
+        self.rev_genome_set = None
+        self.fwd_genome_set = None
+
+        self.genomes = fasta_parser(fasta_ps)
+        self.genome_set = list(self.genomes.keys())
+        self.forward_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
+        self.reverse_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
 
         if gff_ps is not None:
             self.gene_features = gff_parser(gff_ps)  # type: dict
@@ -144,15 +170,18 @@ class BAMile:
             self.fmt_print('Loading forward strand coverage.')
             self.forward_coverage_ps = self.bam_ps + '.fwd_depth.tsv'
             fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
-            genome_set = list(set(fwd_tsv['genome'].tolist()))
-            self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+            self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
+            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+            for genome in self.fwd_genome_set:
+                self.forward_coverage_data[genome] = fwd_tsv[fwd_tsv['genome'] == genome]['coverage'].values
         if self.bam_name + '.rev_depth.tsv' in self.files:
             self.fmt_print('Loading reverse strand coverage.')
             self.reverse_coverage_ps = self.bam_ps + '.rev_depth.tsv'
             rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
-            genome_set = list(set(rev_tsv['genome'].tolist()))
-            self.reverse_coverage_data = {genome: rev_tsv[rev_tsv['genome'] == genome] for genome in genome_set}
-            self.genome_set = genome_set
+            self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
+            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+            for genome in self.rev_genome_set:
+                self.reverse_coverage_data[genome] = rev_tsv[rev_tsv['genome'] == genome]['coverage'].values
 
     def clean_rtRNA(self):
         # all coverage
@@ -256,9 +285,12 @@ class BAMile:
                             f"| cut -f 1,2,4 > {self.forward_coverage_ps}"
             print(f"[{os.path.basename(self.bam_ps)}] -> Forward strand reads coverage: {cmd_depth}")
             status = sbps.run(cmd_depth, shell=True)
-        fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
-        genome_set = list(set(fwd_tsv['genome'].tolist()))
-        self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+            fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+            self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
+            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+            for genome in self.fwd_genome_set:
+                self.forward_coverage_data[genome] = fwd_tsv[fwd_tsv['genome'] == genome]['coverage'].values
+
         if self.reverse_coverage_ps is None:
             self.reverse_coverage_ps = self.bam_ps + '.rev_depth.tsv'
             if self.rtRNA_clean_flag:
@@ -269,21 +301,20 @@ class BAMile:
                             f"| cut -f 1,2,4 > {self.reverse_coverage_ps}"
             print(f"[{os.path.basename(self.bam_ps)}] -> Reverse strand reads coverage: {cmd_depth}")
             status = sbps.run(cmd_depth, shell=True)
-        rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
-        genome_set = list(set(rev_tsv['genome'].tolist()))
-        self.reverse_coverage_data = {genome: rev_tsv[rev_tsv['genome'] == genome] for genome in genome_set}
-        self.genome_set = genome_set
+            rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+            self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
+            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+            for genome in self.rev_genome_set:
+                self.reverse_coverage_data[genome] = rev_tsv[rev_tsv['genome'] == genome]['coverage'].values
 
-        self.coverage_all = np.sum(
-            [self.reverse_coverage_data[genome]['coverage'].sum() for genome in self.genome_set]) + \
-                            np.sum([self.forward_coverage_data[genome]['coverage'].sum() for genome in self.genome_set])
+        self.coverage_all = np.sum([self.reverse_coverage_data[genome].sum() for genome in self.rev_genome_set]) + \
+                            np.sum([self.forward_coverage_data[genome].sum() for genome in self.fwd_genome_set])
+
         for genome in self.genome_set:
-            self.reverse_coverage_data[genome].loc[:, 'coverage'] = self.reverse_coverage_data[genome]['coverage'] / \
-                                                                    (self.coverage_all / 1e9)
-            self.forward_coverage_data[genome].loc[:, 'coverage'] = self.forward_coverage_data[genome]['coverage'] / \
-                                                                    (self.coverage_all / 1e9)
-            # self.reverse_coverage_data[genome]['coverage'] /= (self.coverage_all / 1e9)
-            # self.forward_coverage_data[genome]['coverage'] /= (self.coverage_all / 1e9)
+            self.reverse_coverage_data[genome] = self.reverse_coverage_data[genome] /\
+                                                 (self.coverage_all / 1e9)
+            self.forward_coverage_data[genome] = self.forward_coverage_data[genome]/\
+                                                 (self.coverage_all / 1e9)
         return None
 
     def fetch_coverage(self, genome, start, end, strand=None, move_average: int = None):
@@ -298,17 +329,17 @@ class BAMile:
         """
         length = end - start + 1
         if strand == '+':
-            genome_coverage = self.reverse_coverage_data[genome]['coverage']  # type: pd.Series
+            genome_coverage = self.reverse_coverage_data[genome]  # type: np.ndarray
         elif strand == '-':
-            genome_coverage = self.forward_coverage_data[genome]['coverage']  # type: pd.Series
+            genome_coverage = self.forward_coverage_data[genome]  # type: np.ndarray
         else:
-            genome_coverage = self.reverse_coverage_data[genome]['coverage'] + \
-                              self.forward_coverage_data[genome]['coverage']
+            genome_coverage = self.reverse_coverage_data[genome] + \
+                              self.forward_coverage_data[genome]
         if (move_average is None) or (move_average == 0):
-            return np.roll(genome_coverage.values, -(start - 1))[:length]  # genome_coverage.values[start - 1:end]
+            return np.roll(genome_coverage, -(start - 1))[:length]
         else:
-            raw_coverage = np.roll(genome_coverage.values, -(start - 1 - move_average))[
-                           :length + move_average]  # genome_coverage.values[start - 1 - move_average:end + move_average]
+            raw_coverage = np.roll(genome_coverage, -(start - 1 - move_average))[
+                           :length + move_average]
             avg_coverage = np.array(
                 [np.mean(raw_coverage[i:i + move_average]) for i in range(move_average + end - start + 1)])
             return avg_coverage[move_average:move_average + end - start + 1]
@@ -337,8 +368,8 @@ def sum_of_coverage(cds: GeneFeature, bam: BAMile):
     return np.sum(bam.fetch_coverage(cds.genome, cds.start, cds.end, cds.strand))
 
 
-def count_reads_custom(bam_ps: str, gff_ps: str, feature: str = 'CDS') -> Tuple[pd.DataFrame, BAMile]:
-    bamflie = BAMile(bam_ps, gff_ps)
+def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS') -> Tuple[pd.DataFrame, BAMile]:
+    bamflie = BAMile(bam_ps, gff_ps, fasta_ps)
     cds_list = bamflie.gene_features[feature]
     bamflie.separate_bam_by_strand()  # separate the sam file according to the strands
     bamflie.count_coverage()  # counting coverage along the genome
@@ -409,8 +440,8 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     return cds_tsv, all_reads
 
 
-def count_feature_reads(bam_ps: str, gff_ps: str, feature: str = 'CDS') -> Tuple[pd.DataFrame, BAMile]:
-    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, feature)
+def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str,feature: str = 'CDS') -> Tuple[pd.DataFrame, BAMile]:
+    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps, feature)
     bamflie.fmt_print('HTseq counting.')
     htseq_counts, all_reads = count_reads_htseq([bamflie.cleaned_reads_reverse_strand_ps,
                                                  bamflie.cleaned_reads_forward_strand_ps],
