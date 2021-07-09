@@ -1,3 +1,14 @@
-./example_data
-./A1_andong_output
+example_data
+A1_andong_output
+CaoLB_output
 .idea
+*.sam
+*.csv
+*.bam
+*.tsv
+*.log
+*.bai
+*.bt2
+*.fasta
+*.bed
+
