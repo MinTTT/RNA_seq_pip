@@ -38,6 +38,10 @@ class RNASeqAnalyzer:
         self.gff_ps = gff_ps
         self.raw_seq_data_ps1 = seq_ps1
         self.raw_seq_data_ps2 = seq_ps2
+        if self.raw_seq_data_ps2 is None:
+            self.paired_flag = False
+        else:
+            self.paired_flag = True
         self.reference_file_name = os.path.basename(self.reference_file_path)  # type: str
         self.reference_file_dir = os.path.dirname(self.reference_file_path)
         self.indexed_base_name = self.reference_file_name.split('.')[0]
@@ -115,10 +119,16 @@ class RNASeqAnalyzer:
         # mapping
         if os.path.basename(self.bam_index_ps) not in self.file_in_dir:
             os.environ['BOWTIE2_INDEXES'] = self.output_dir
-            cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
-                        f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name}' \
-                        f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} '\
-                        f'-S {self.sam_file_ps}'
+            if self.seq_data_ps2 is None:  # unpaired reads
+                cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
+                            f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name}' \
+                            f' -U {self.seq_data_ps1} ' \
+                            f'-S {self.sam_file_ps}'
+            else:  # paired reads
+                cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
+                            f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name}' \
+                            f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} '\
+                            f'-S {self.sam_file_ps}'
             print(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
             self.append_to_log(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
             status3 = self.cmd_shell(cmd_align)
@@ -135,7 +145,8 @@ class RNASeqAnalyzer:
 
     def counts_statistic(self):
         print(f'[{self.sample_name}] -> Calculate gene expression level.')
-        counts_stat, bam = count_feature_reads(self.bam_sorted_ps, self.gff_ps, self.reference_file_path)
+        counts_stat, bam = count_feature_reads(self.bam_sorted_ps, self.gff_ps, self.reference_file_path,
+                                               paired_flag=self.paired_flag)
         self.__dict__['counts_stat'] = counts_stat
         self.__dict__['gene_dict'] = bam.gene_features
         self.__dict__['bam'] = bam

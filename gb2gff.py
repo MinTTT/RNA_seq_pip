@@ -16,11 +16,18 @@ import getopt
 from BCBio import GFF
 from Bio import SeqIO
 
+
 def gb2gff(in_file, fasta=True):
+    """
+    convert gb file to gff file.
+    :param in_file: str, input gb file dir
+    :param fasta: bool, default is True, and convert the gb file to .fasta file simultaneously.
+    :return: None
+    """
     dir, basename = os.path.split(in_file)
     basename = basename[:-len(basename.split('.')[-1])]
-    gff_file = os.path.join(dir, basename+'gff')
-    fasta_file = os.path.join(dir, basename+'fasta')
+    gff_file = os.path.join(dir, basename + 'gff')
+    fasta_file = os.path.join(dir, basename + 'fasta')
     with open(in_file) as gbfile:
         gb = SeqIO.parse(gbfile, "genbank")
         with open(gff_file, 'w') as gfffile:
@@ -32,11 +39,9 @@ def gb2gff(in_file, fasta=True):
             print(f"features number: {len(features)}.")
             with open(fasta_file, 'w') as fafile:
                 SeqIO.write(features[0], fafile, 'fasta')
+    return None
 
-
-
-
-#%%
+# %%
 if __name__ == '__main__':
     args = sys.argv[1:]
     opt, args = getopt.getopt(args, 'f:')
@@ -51,4 +56,3 @@ if __name__ == '__main__':
         fasta_flag = True
 
     gb2gff(args[0], fasta=fasta_flag)
-

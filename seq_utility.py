@@ -21,7 +21,7 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 from typing import Union, Tuple, List, Dict
 import subprocess as sbps
-
+from functools import partial
 
 # […]
 
@@ -80,43 +80,58 @@ def gff_parser(gff_ps: str) -> dict:
 def fasta_parser(fasta_ps: str):
     with open(fasta_ps, 'r') as fa_fl:
         content = fa_fl.readlines()
-        lines = [line.strip('\n') for line in content]
+        lines = [line.strip('\n') for line in content if len(line) != 0]
         genomes = dict()
         for line in lines:
-            if line[0] == '>':
-                name_comments = line[1:].split(' ')
-                name = name_comments[0]
-                genomes[name] = ''
-            else:
-                genomes[name] += line.replace(' ', '')
+            if len(line) > 0:
+                if line[0] == '>':
+                    name_comments = line[1:].split(' ')
+                    name = name_comments[0]
+                    genomes[name] = ''
+                else:
+                    genomes[name] += line.replace(' ', '')
     return genomes
 
 
-
-
-
-
-
-def check_reverse(reads):
-    if reads.is_proper_pair:
-        read1 = reads.is_read1 and reads.is_reverse
-        read2 = reads.is_read2 and (not reads.is_reverse)
-        return read1 or read2
+def check_reverse(reads: pysam.AlignedSegment, paired: bool = True):
+    if paired:
+        if reads.is_proper_pair:
+            read1 = reads.is_read1 and reads.is_reverse
+            read2 = reads.is_read2 and (not reads.is_reverse)
+            return read1 or read2
+        else:
+            return False
     else:
-        return False
+        if reads.is_unmapped:
+            return False
+        elif reads.is_reverse:
+            return True
+        else:
+            return False
 
 
-def check_forward(reads):
-    if reads.is_proper_pair:
-        read1 = reads.is_read1 and (not reads.is_reverse)
-        read2 = reads.is_read2 and reads.is_reverse
-        return read1 or read2
+def check_forward(reads: pysam.AlignedSegment, paired: bool = True):
+    if paired:
+        if reads.is_proper_pair:
+            read1 = reads.is_read1 and (not reads.is_reverse)
+            read2 = reads.is_read2 and reads.is_reverse
+            return read1 or read2
+        else:
+            return False
     else:
-        return False
+        if not reads.is_unmapped:
+            if reads.is_reverse:
+                return False
+            else:
+                return True
+        else:
+            return False
 
 
 class BAMile:
-    def __init__(self, bam_ps, gff_ps=None, fasta_ps=None, threads=16):
+    def __init__(self, bam_ps, gff_ps=None, reference_ps=None,
+                 paired_flag: bool = True,
+                 threads=16):
         self.bam_ps = bam_ps
         self.bam_name = os.path.basename(self.bam_ps)
         self.dir = os.path.split(self.bam_ps)[0]
@@ -126,6 +141,7 @@ class BAMile:
         self.reads_reverse_strand_ps = None
         self.forward_coverage_ps = None
         self.reverse_coverage_ps = None
+        self.paired_flag = paired_flag
 
         self.genome_set = None
         self.coverage_all = None
@@ -142,7 +158,7 @@ class BAMile:
         self.rev_genome_set = None
         self.fwd_genome_set = None
 
-        self.genomes = fasta_parser(fasta_ps)
+        self.genomes = fasta_parser(reference_ps)
         self.genome_set = list(self.genomes.keys())
         self.forward_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
         self.reverse_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
@@ -192,15 +208,16 @@ class BAMile:
             rRNAs = self.gene_features['rRNA']  # type List[GeneFeature]
             rtRNA_list += rRNAs
             rRNA_reads = np.sum(
-                [self.count_cds_reads(rRNA.genome, rRNA.start, rRNA.end, rRNA.strand).sum() for rRNA in rRNAs])
+                [self.count_cds_reads(rRNA.genome, rRNA.start, rRNA.end, rRNA.strand) for rRNA in rRNAs])
         except AttributeError:
             rRNA_reads = 0
             self.fmt_print("Attention: Don't find rRNA annotations.")
+
         try:
             tRNAs = self.gene_features['tRNA']  # type List[GeneFeature]
             rtRNA_list += tRNAs
             tRNA_reads = np.sum(
-                [self.count_cds_reads(tRNAs.genome, tRNAs.start, tRNAs.end, tRNAs.strand) for tRNAs in tRNAs])
+                [self.count_cds_reads(tRNA.genome, tRNA.start, tRNA.end, tRNA.strand) for tRNA in tRNAs])
         except AttributeError:
             tRNA_reads = 0
             self.fmt_print("Attention: Don't find tRNA annotations.")
@@ -243,29 +260,56 @@ class BAMile:
         :return: int
         """
         if strand == '+':
-            return self.bam.count(contig=genome, start=start - 1, end=end, read_callback=check_reverse)
+            return self.bam.count(contig=genome, start=start - 1, end=end,
+                                  read_callback=partial(check_reverse, paired=self.paired_flag))
         elif strand == '-':
-            return self.bam.count(contig=genome, start=start - 1, end=end, read_callback=check_forward)
+            return self.bam.count(contig=genome, start=start - 1, end=end,
+                                  read_callback=partial(check_forward, paired=self.paired_flag))
         else:
             return self.bam.count(contig=genome, start=start - 1, end=end)
 
     def separate_bam_by_strand(self, clean_rtRNA=True):
+        """
+
+        Bitwise Flags
+        Integer	Binary	Description (Paired Read Interpretation)
+        1	000000000001	template having multiple templates in sequencing (read is paired)
+        2	000000000010	each segment properly aligned according to the aligner (read mapped in proper pair)
+        4	000000000100	segment unmapped (read1 unmapped)
+        8	000000001000	next segment in the template unmapped (read2 unmapped)
+        16	000000010000	SEQ being reverse complemented (read1 reverse complemented)
+        32	000000100000	SEQ of the next segment in the template being reverse complemented (read2 reverse complemented)
+        64	000001000000	the first segment in the template (is read1)
+        128	000010000000	the last segment in the template (is read2)
+        256	000100000000	not primary alignment
+        512	001000000000	alignment fails quality checks
+        1024	010000000000	PCR or optical duplicate
+        2048	100000000000	supplementary alignment (e.g. aligner specific, could be a portion of a split read or a tied region)
+        :param clean_rtRNA:
+        :return:
+        """
         if (self.reads_forward_strand_ps is None) or (self.reads_reverse_strand_ps is None):
             self.reads_forward_strand_ps = self.bam_ps + '.fwd_strand.bam'
-            cmd_sep = f"samtools view -f 99 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_1.bam'} ;" \
-                      f" samtools view -f 147 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_2.bam'} ; " \
-                      f"samtools merge -@ {self.threads} {self.reads_forward_strand_ps} " \
-                      f"{self.bam_ps + '.fwd_1.bam'} {self.bam_ps + '.fwd_2.bam'}; " \
-                      f"rm {self.bam_ps + '.fwd_1.bam'}; rm {self.bam_ps + '.fwd_2.bam'}"
+            if self.paired_flag:
+                cmd_sep = f"samtools view -f 99 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_1.bam'} ;" \
+                          f" samtools view -f 147 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_2.bam'} ; " \
+                          f"samtools merge -@ {self.threads} {self.reads_forward_strand_ps} " \
+                          f"{self.bam_ps + '.fwd_1.bam'} {self.bam_ps + '.fwd_2.bam'}; " \
+                          f"rm {self.bam_ps + '.fwd_1.bam'}; rm {self.bam_ps + '.fwd_2.bam'}"
+            else:
+                cmd_sep = f"samtools view -F 1044 -@ {self.threads} {self.bam_ps} -o {self.reads_forward_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
             status = sbps.run(cmd_sep, shell=True)
 
             self.reads_reverse_strand_ps = self.bam_ps + '.rvs_strand.bam'
-            cmd_sep = f"samtools view -f 83 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_1.bam'} ;" \
-                      f" samtools view -f 163 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_2.bam'} ; " \
-                      f"samtools merge -@ {self.threads} {self.reads_reverse_strand_ps} " \
-                      f"{self.bam_ps + '.rev_1.bam'} {self.bam_ps + '.rev_2.bam'}; " \
-                      f"rm {self.bam_ps + '.rev_1.bam'}; rm {self.bam_ps + '.rev_2.bam'}"
+            if self.paired_flag:
+                cmd_sep = f"samtools view -f 83 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_1.bam'} ;" \
+                          f" samtools view -f 163 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_2.bam'} ; " \
+                          f"samtools merge -@ {self.threads} {self.reads_reverse_strand_ps} " \
+                          f"{self.bam_ps + '.rev_1.bam'} {self.bam_ps + '.rev_2.bam'}; " \
+                          f"rm {self.bam_ps + '.rev_1.bam'}; rm {self.bam_ps + '.rev_2.bam'}"
+            else:
+                cmd_sep = f"samtools view -f 16 -F 1028 -@ {self.threads} {self.bam_ps} -o {self.reads_reverse_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
             status = sbps.run(cmd_sep, shell=True)
         if clean_rtRNA:
@@ -311,9 +355,9 @@ class BAMile:
                             np.sum([self.forward_coverage_data[genome].sum() for genome in self.fwd_genome_set])
 
         for genome in self.genome_set:
-            self.reverse_coverage_data[genome] = self.reverse_coverage_data[genome] /\
+            self.reverse_coverage_data[genome] = self.reverse_coverage_data[genome] / \
                                                  (self.coverage_all / 1e9)
-            self.forward_coverage_data[genome] = self.forward_coverage_data[genome]/\
+            self.forward_coverage_data[genome] = self.forward_coverage_data[genome] / \
                                                  (self.coverage_all / 1e9)
         return None
 
@@ -368,8 +412,9 @@ def sum_of_coverage(cds: GeneFeature, bam: BAMile):
     return np.sum(bam.fetch_coverage(cds.genome, cds.start, cds.end, cds.strand))
 
 
-def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS') -> Tuple[pd.DataFrame, BAMile]:
-    bamflie = BAMile(bam_ps, gff_ps, fasta_ps)
+def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS',
+                       paired_flag: bool = True) -> Tuple[pd.DataFrame, BAMile]:
+    bamflie = BAMile(bam_ps, gff_ps, fasta_ps, paired_flag=paired_flag)
     cds_list = bamflie.gene_features[feature]
     bamflie.separate_bam_by_strand()  # separate the sam file according to the strands
     bamflie.count_coverage()  # counting coverage along the genome
@@ -440,8 +485,8 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     return cds_tsv, all_reads
 
 
-def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str,feature: str = 'CDS') -> Tuple[pd.DataFrame, BAMile]:
-    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps, feature)
+def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True) -> Tuple[pd.DataFrame, BAMile]:
+    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps, feature, paired_flag=paired_flag)
     bamflie.fmt_print('HTseq counting.')
     htseq_counts, all_reads = count_reads_htseq([bamflie.cleaned_reads_reverse_strand_ps,
                                                  bamflie.cleaned_reads_forward_strand_ps],
