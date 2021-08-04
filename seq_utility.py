@@ -18,11 +18,11 @@ import numpy as np  # Or any other
 import pysam
 # import pysamstats
 from tqdm import tqdm
-from joblib import Parallel, delayed
-from typing import Union, Tuple, List, Dict
+from joblib import Parallel, delayed, dump, load
+from typing import Union, Tuple, List, Dict, Optional
 import subprocess as sbps
 from functools import partial
-
+from scipy.ndimage import convolve1d
 # […]
 
 
@@ -41,8 +41,8 @@ class GeneFeature:
         return self.annotation
 
     def parse_annotation(self, annotation):
-        for anno in annotation.split(';'):
-            self.__dict__[anno.split('=')[0]] = anno.split('=')[-1]
+        for ant in annotation.split(';'):
+            self.__dict__[ant.split('=')[0]] = ant.split('=')[-1]
 
 
 def bed_writer(ps, features: List[GeneFeature]) -> None:
@@ -129,23 +129,33 @@ def check_forward(reads: pysam.AlignedSegment, paired: bool = True):
 
 
 class BAMile:
-    def __init__(self, bam_ps, gff_ps=None, reference_ps=None,
+    def __init__(self, bam_ps: str = None, gff_ps: str = None, reference_ps=None,
                  paired_flag: bool = True,
                  threads=16):
-        self.bam_ps = bam_ps
-        self.bam_name = os.path.basename(self.bam_ps)
-        self.dir = os.path.split(self.bam_ps)[0]
+        if bam_ps is not None:
+            self.bam_ps = bam_ps
+            self.bam_name = os.path.basename(self.bam_ps)
+            self.dir = os.path.split(self.bam_ps)[0]
+        else:
+            self.bam_ps = None
+            self.bam_name = None
+            self.dir = None
         self.threads = threads
-        self.bam = pysam.AlignmentFile(self.bam_ps, 'rb', threads=threads, check_sq=False)  # type: pysam.AlignmentFile
+        if bam_ps is not None:
+            self.bam = pysam.AlignmentFile(self.bam_ps, 'rb',
+                                           threads=threads, check_sq=False)  # type: pysam.AlignmentFile
+            self.mapped_reads = self.bam.mapped
+        else:
+            self.bam = None
+            self.mapped_reads = None
         self.reads_forward_strand_ps = None
         self.reads_reverse_strand_ps = None
         self.forward_coverage_ps = None
         self.reverse_coverage_ps = None
         self.paired_flag = paired_flag
-
         self.genome_set = None
         self.coverage_all = None
-        self.mapped_reads = self.bam.mapped
+
         self.cleaned_reads = None
         self.remove_fwd_bed_ps = None
         self.remove_rev_bed_ps = None
@@ -154,20 +164,52 @@ class BAMile:
         self.removed_fwd_bam_ps = None
         self.removed_rev_bam_ps = None
         self.rtRNA_clean_flag = False
-        self.files = None
+        self.files = None  # type: Optional[List]  # files in dir
         self.rev_genome_set = None
         self.fwd_genome_set = None
-
-        self.genomes = fasta_parser(reference_ps)
-        self.genome_set = list(self.genomes.keys())
-        self.forward_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
-        self.reverse_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
-
-        if gff_ps is not None:
-            self.gene_features = gff_parser(gff_ps)  # type: dict
+        if reference_ps is not None:
+            self.genomes = fasta_parser(reference_ps)
+            self.genome_set = list(self.genomes.keys())
+            # initial coverage in genomes. default is 0.
+            self.forward_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
+            self.reverse_coverage_data = {genome: np.zeros(len(self.genomes[genome])) for genome in self.genome_set}
         else:
-            self.gene_features = None  # type: dict or None
+            self.genomes = None
+            self.genome_set = None
+            self.forward_coverage_data = None
+            self.reverse_coverage_data = None
+        if gff_ps is not None:
+            self.set_gene_features(gff_ps)
+        else:
+            self.gene_features = None  # type: Optional[dict]
         self.check_path()
+        self.dump_ps = None
+
+    def dump_data(self):
+        self.fmt_print('Dumping data.')
+        self.dump_ps = os.path.join(self.dir, self.bam_name + '.bin')
+        dump_list = ['bam_ps', 'bam_name', 'dir', 'threads', 'reads_forward_strand_ps',
+                     'reads_reverse_strand_ps', 'forward_coverage_ps', 'reverse_coverage_ps',
+                     'paired_flag', 'genome_set', 'coverage_all', 'mapped_reads', 'cleaned_reads',
+                     'remove_fwd_bed_ps', 'remove_rev_bed_ps', 'cleaned_reads_forward_strand_ps',
+                     'cleaned_reads_reverse_strand_ps', 'removed_fwd_bam_ps', 'removed_rev_bam_ps',
+                     'rtRNA_clean_flag', 'files', 'rev_genome_set', 'fwd_genome_set', 'genomes',
+                     'forward_coverage_data', 'reverse_coverage_data', 'gene_features']
+        dump_dict = {}
+        for key in dump_list:
+            dump_dict[key] = self.__dict__[key]
+        dump(dump_dict, self.dump_ps)
+
+    def set_gene_features(self, gff_ps):
+        self.gene_features = gff_parser(gff_ps)
+        return None
+
+    def load_data(self, data_ps):
+        self.fmt_print('Loading data.')
+        self.dump_ps = data_ps
+        load_data = load(self.dump_ps)  # type: dict
+        for key, data in load_data.items():
+            self.__dict__[key] = data
 
     def check_path(self):
         """
@@ -176,28 +218,32 @@ class BAMile:
         """
         self.fmt_print('Checking process files.')
         self.files = os.listdir(self.dir)
-        if self.bam_name + '.fwd_strand.bam' in self.files:
-            self.fmt_print('Detected forward strand mapped sam file')
-            self.reads_forward_strand_ps = self.bam_ps + '.fwd_strand.bam'
-        if self.bam_name + '.rvs_strand.bam' in self.files:
-            self.fmt_print('Detected reverse strand mapped sam file')
-            self.reads_reverse_strand_ps = self.bam_ps + '.rvs_strand.bam'
-        if self.bam_name + '.fwd_depth.tsv' in self.files:
-            self.fmt_print('Loading forward strand coverage.')
-            self.forward_coverage_ps = self.bam_ps + '.fwd_depth.tsv'
-            fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
-            self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
-            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
-            for genome in self.fwd_genome_set:
-                self.forward_coverage_data[genome] = fwd_tsv[fwd_tsv['genome'] == genome]['coverage'].values
-        if self.bam_name + '.rev_depth.tsv' in self.files:
-            self.fmt_print('Loading reverse strand coverage.')
-            self.reverse_coverage_ps = self.bam_ps + '.rev_depth.tsv'
-            rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
-            self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
-            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
-            for genome in self.rev_genome_set:
-                self.reverse_coverage_data[genome] = rev_tsv[rev_tsv['genome'] == genome]['coverage'].values
+        if self.bam_name is not None:
+            if self.bam_name + '.fwd_strand.bam' in self.files:
+                self.fmt_print('Detected forward strand mapped sam file')
+                self.reads_forward_strand_ps = self.bam_ps + '.fwd_strand.bam'
+            if self.bam_name + '.rvs_strand.bam' in self.files:
+                self.fmt_print('Detected reverse strand mapped sam file')
+                self.reads_reverse_strand_ps = self.bam_ps + '.rvs_strand.bam'
+            if self.bam_name + '.fwd_depth.tsv' in self.files:
+                self.fmt_print('Loading forward strand coverage.')
+                self.forward_coverage_ps = self.bam_ps + '.fwd_depth.tsv'
+                fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+                self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
+                # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+                for genome in self.fwd_genome_set:
+                    self.forward_coverage_data[genome] = fwd_tsv[fwd_tsv['genome'] == genome]['coverage'].values
+            if self.bam_name + '.rev_depth.tsv' in self.files:
+                self.fmt_print('Loading reverse strand coverage.')
+                self.reverse_coverage_ps = self.bam_ps + '.rev_depth.tsv'
+                rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+                self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
+                # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+                for genome in self.rev_genome_set:
+                    self.reverse_coverage_data[genome] = rev_tsv[rev_tsv['genome'] == genome]['coverage'].values
+
+
+
 
     def clean_rtRNA(self):
         # all coverage
@@ -382,30 +428,41 @@ class BAMile:
         if (move_average is None) or (move_average == 0):
             return np.roll(genome_coverage, -(start - 1))[:length]
         else:
-            raw_coverage = np.roll(genome_coverage, -(start - 1 - move_average))[
-                           :length + move_average]
-            avg_coverage = np.array(
-                [np.mean(raw_coverage[i:i + move_average]) for i in range(move_average + end - start + 1)])
-            return avg_coverage[move_average:move_average + end - start + 1]
+            raw_coverage = np.roll(genome_coverage, -(start - 1))[:length]
+            # avg_coverage = np.array(
+            #     [np.mean(raw_coverage[i:i + move_average]) for i in range(move_average + end - start + 1)])
+            avg_coverage = convolve1d(raw_coverage, np.ones(move_average)/move_average, mode='wrap')
+            return avg_coverage
 
     def plot_coverage(self, genome, start, end, strand=None, window=10, ax: plt.axes = None, **kwargs):
-        if ax is None:
-            ax = plt.gca()
+
         feature_x = np.arange(start, end + 1, step=1)
+
         if strand is not None:
             coverage = self.fetch_coverage(genome, start, end, strand, move_average=window)
+            rets = np.hstack([feature_x.reshape(-1, 1), coverage.reshape(-1, 1)])
+        else:
+            coverage_sense = self.fetch_coverage(genome, start, end, strand='+', move_average=window)
+            coverage_antisense = self.fetch_coverage(genome, start, end, strand='-', move_average=window)
+            rets = np.hstack(
+                [feature_x.reshape(-1, 1), coverage_sense.reshape(-1, 1), coverage_antisense.reshape(-1, 1)])
+
+        if ax is not False:
+            if ax is None:
+                ax = plt.gca()
+        else:
+            return rets
+
+        if strand is not None:
             if strand == '+':
                 ax.bar(feature_x, coverage, width=1, **kwargs)
             if strand == '-':
                 ax.bar(feature_x, -coverage, width=1, **kwargs)
             return np.hstack([feature_x.reshape(-1, 1), coverage.reshape(-1, 1)])
         else:
-            coverage_sense = self.fetch_coverage(genome, start, end, strand='+', move_average=window)
-            coverage_antisense = self.fetch_coverage(genome, start, end, strand='-', move_average=window)
             ax.bar(feature_x, coverage_sense, width=1, **kwargs)
             ax.bar(feature_x, -coverage_antisense, width=1, **kwargs)
-            return np.hstack(
-                [feature_x.reshape(-1, 1), coverage_sense.reshape(-1, 1), coverage_antisense.reshape(-1, 1)])
+            return rets
 
 
 def sum_of_coverage(cds: GeneFeature, bam: BAMile):
