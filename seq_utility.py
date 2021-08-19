@@ -242,9 +242,6 @@ class BAMile:
                 for genome in self.rev_genome_set:
                     self.reverse_coverage_data[genome] = rev_tsv[rev_tsv['genome'] == genome]['coverage'].values
 
-
-
-
     def clean_rtRNA(self):
         # all coverage
         self.rtRNA_clean_flag = True
@@ -285,12 +282,12 @@ class BAMile:
             if self.reads_forward_strand_ps:
                 cmd = f'samtools view {self.reads_forward_strand_ps} -b -h -o {self.removed_fwd_bam_ps} ' \
                       f'-U {self.cleaned_reads_forward_strand_ps} -L {self.remove_rev_bed_ps} -@ {self.threads}'
-                status = sbps.run(cmd, shell=True)
+                status = sbps.run(cmd, shell=True, cwd=os.getcwd())
         if os.path.basename(self.cleaned_reads_reverse_strand_ps) not in self.files:
             if self.reads_reverse_strand_ps:
                 cmd = f'samtools view {self.reads_reverse_strand_ps} -b -h -o {self.removed_rev_bam_ps} ' \
                       f'-U {self.cleaned_reads_reverse_strand_ps} -L {self.remove_fwd_bed_ps} -@ {self.threads}'
-                status = sbps.run(cmd, shell=True)
+                status = sbps.run(cmd, shell=True, cwd=os.getcwd())
         self.cleaned_reads = self.mapped_reads - rRNA_reads - tRNA_reads
 
     def fmt_print(self, msg):
@@ -316,7 +313,6 @@ class BAMile:
 
     def separate_bam_by_strand(self, clean_rtRNA=True):
         """
-
         Bitwise Flags
         Integer	Binary	Description (Paired Read Interpretation)
         1	000000000001	template having multiple templates in sequencing (read is paired)
@@ -345,7 +341,7 @@ class BAMile:
             else:
                 cmd_sep = f"samtools view -F 1044 -@ {self.threads} {self.bam_ps} -o {self.reads_forward_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
-            status = sbps.run(cmd_sep, shell=True)
+            status = sbps.run(cmd_sep, shell=True, cwd=os.getcwd())
 
             self.reads_reverse_strand_ps = self.bam_ps + '.rvs_strand.bam'
             if self.paired_flag:
@@ -357,7 +353,7 @@ class BAMile:
             else:
                 cmd_sep = f"samtools view -f 16 -F 1028 -@ {self.threads} {self.bam_ps} -o {self.reads_reverse_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
-            status = sbps.run(cmd_sep, shell=True)
+            status = sbps.run(cmd_sep, shell=True, cwd=os.getcwd())
         if clean_rtRNA:
             self.rtRNA_clean_flag = True
             self.clean_rtRNA()
@@ -374,7 +370,7 @@ class BAMile:
                 cmd_depth = f"samtools mpileup -a {self.reads_forward_strand_ps} " \
                             f"| cut -f 1,2,4 > {self.forward_coverage_ps}"
             print(f"[{os.path.basename(self.bam_ps)}] -> Forward strand reads coverage: {cmd_depth}")
-            status = sbps.run(cmd_depth, shell=True)
+            status = sbps.run(cmd_depth, shell=True, cwd=os.getcwd())
             fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
             self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
             # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
@@ -390,7 +386,7 @@ class BAMile:
                 cmd_depth = f"samtools mpileup -a {self.reads_reverse_strand_ps} " \
                             f"| cut -f 1,2,4 > {self.reverse_coverage_ps}"
             print(f"[{os.path.basename(self.bam_ps)}] -> Reverse strand reads coverage: {cmd_depth}")
-            status = sbps.run(cmd_depth, shell=True)
+            status = sbps.run(cmd_depth, shell=True, cwd=os.getcwd())
             rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
             self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
             # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
@@ -407,7 +403,7 @@ class BAMile:
                                                  (self.coverage_all / 1e9)
         return None
 
-    def fetch_coverage(self, genome, start, end, strand=None, move_average: int = None):
+    def fetch_coverage(self, genome, start, end, strand=None, move_average: int = None) -> np.ndarray:
         """
         fetch coverage from coverage data, execute count_coverage before this method.
         :param genome:
@@ -417,7 +413,11 @@ class BAMile:
         :param move_average:
         :return:
         """
-        length = end - start + 1
+        genome_length = len(self.genomes[genome])
+        if start > end:
+            length = end - (start - genome_length) + 1
+        else:
+            length = end - start + 1
         if strand == '+':
             genome_coverage = self.reverse_coverage_data[genome]  # type: np.ndarray
         elif strand == '-':
@@ -520,7 +520,7 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
                     f"--nonunique fraction -a 10 -n 32 -q {' '.join(bam_ps)} {gff_ps}" \
                     + f" > {export_name}"  # the prefix was used for init env.
         print(cmd_htseq)
-        status = sbps.run(cmd_htseq, shell=True)
+        status = sbps.run(cmd_htseq, shell=True, cwd=os.getcwd())
     columns_title = [id]
     for i in range(len(bam_ps)):
         columns_title.append(f'htseq_counts_{i}')

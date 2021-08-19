@@ -17,7 +17,8 @@ import numpy as np  # Or any other
 import subprocess as sbps
 import datetime
 from typing import Union, Optional
-from seq_utility import count_feature_reads
+from seq_utility import count_feature_reads, BAMile
+
 
 # […]
 
@@ -30,7 +31,7 @@ def file_prefix(prefix, ps):
 
 class RNASeqAnalyzer:
     def __init__(self, sample_name: str, ref_ps: str, gff_ps: str = None,
-                 seq_ps1: str=None, seq_ps2: str=None, adapter: list = None,
+                 seq_ps1: str = None, seq_ps2: str = None, adapter: list = None,
                  bowtie_pars: dict = None,
                  output_dir: str = None):
         self.sample_name = sample_name  # type: str # sample name
@@ -99,7 +100,7 @@ class RNASeqAnalyzer:
                             f"{self.seq_data_ps1} -p {self.seq_data_ps2}" \
                             f" {self.raw_seq_data_ps1} {self.raw_seq_data_ps2}"
                 print(f"[{self.sample_name}] -> Removing linker: " + cmd_trime)
-                status0 = sbps.Popen(cmd_trime, shell=True, stdout=sbps.PIPE)
+                status0 = sbps.Popen(cmd_trime, shell=True, stdout=sbps.PIPE, cwd=os.getcwd())
                 self.append_to_log(status0.stdout.read())
             else:
                 print(f'[{self.sample_name}] -> Pass linker removing.')
@@ -107,14 +108,16 @@ class RNASeqAnalyzer:
 
         # make index files
         if os.path.basename(self.reference_file_name) not in self.file_in_dir:
-            cmd_copy_ref = f'cp {self.reference_file_path} {os.path.join(self.output_dir, self.reference_file_name)}'
+
+            cmd_copy_ref = f'cp {self.reference_file_path} ' \
+                           f'{os.path.join(self.output_dir, self.reference_file_name)}'
             # update the reference file ps
             self.reference_file_path = os.path.join(self.output_dir, self.reference_file_name)
             self.append_to_log(f'[{self.sample_name}] -> Copy Reference: {cmd_copy_ref}')
             status1 = self.cmd_shell(cmd_copy_ref)
-            cmd_index = f'cd {self.output_dir}&&bowtie2-build -f {self.reference_file_path} {self.indexed_base_name}'
+            cmd_index = f'bowtie2-build -f {self.reference_file_path} {self.indexed_base_name}'
             print(f'[{self.sample_name}] -> Generate indexed reference: {cmd_index}')
-            status2 = self.cmd_shell(cmd_index)
+            status2 = self.cmd_shell(cmd_index, cwd=self.output_dir)
 
         # mapping
         if os.path.basename(self.bam_index_ps) not in self.file_in_dir:
@@ -127,7 +130,7 @@ class RNASeqAnalyzer:
             else:  # paired reads
                 cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
                             f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name}' \
-                            f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} '\
+                            f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
                             f'-S {self.sam_file_ps}'
             print(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
             self.append_to_log(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
@@ -152,24 +155,101 @@ class RNASeqAnalyzer:
         self.__dict__['bam'] = bam
         counts_stat.to_csv(self.counts_statistic_ps)
 
-    def cmd_shell(self, cmd: str):
+    def cmd_shell(self, cmd: str, cwd=None):
         """"
         execute command in shell and append output into log file.
         """
-        stat = sbps.Popen(cmd, shell=True, stdout=sbps.PIPE)
+        if cwd is None:
+            cwd = os.getcwd()
+        stat = sbps.Popen(cmd, shell=True, stdout=sbps.PIPE, cwd=cwd)
         self.append_to_log(stat.stdout.read())
         return stat
 
 
 # %%
 if __name__ == '__main__':
-    read1 = r'./example_data/seq_data/A1.raw_1.fastq.gz'
-    read2 = r'./example_data/seq_data/A1.raw_2.fastq.gz'
-    gff_file = r'./example_data/annotation_file/CLB_strain.gff'
-    sample_name = 'CaoLB'
-    ref_ps = r'./example_data/annotation_file/CLB_strain.fa'
-    adapters = ['AGATCGGAAGAGC', 'AGATCGGAAGAGC']
-    sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=gff_file,
-                            seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32}, adapter=adapters)
+    # read1 = r'./example_data/seq_data/A1.raw_1.fastq.gz'
+    # read2 = r'./example_data/seq_data/A1.raw_2.fastq.gz'
+    # gff_file = r'./example_data/annotation_file/CLB_strain.gff'
+    # sample_name = 'CaoLB'
+    # ref_ps = r'./example_data/annotation_file/CLB_strain.fa'
+    # adapters = ['AGATCGGAAGAGC', 'AGATCGGAAGAGC']
+    # sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=gff_file,
+    #                         seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32}, adapter=adapters)
+    # sample.seq_data_align()
+    # sample.counts_statistic()
+
+    # %%
+
+    from scipy.stats import binned_statistic, linregress
+    import matplotlib.pyplot as plt
+    import scipy.stats as stats
+    import sciplot as splt
+    splt.whitegrid()
+    read1 = '/media/fulab/AD.CaoQian/2-rpoB_Deeqseq/rpoBDeeqseq/Filter_SOAPnuke/Clean/MG1655/MG1655_1.fq.gz'
+    read2 = '/media/fulab/AD.CaoQian/2-rpoB_Deeqseq/rpoBDeeqseq/Filter_SOAPnuke/Clean/MG1655/MG1655_2.fq.gz'
+    ref_ps = '/home/fulab/home/fulab/tmp/pycharm_project_757/example_data/annotation_file/GCA_000005845.2_ASM584v2_genomic.fasta'
+    sample_name = 'MG1655'
+    ori_site = 3925859
+    bin_length = 5000
+    sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=None,
+                            seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32})
     sample.seq_data_align()
-    sample.counts_statistic()
+    bam_file = BAMile(sample.bam_sorted_ps, sample.gff_ps, sample.reference_file_path,
+                      paired_flag=sample.paired_flag)
+    bam_file.separate_bam_by_strand(clean_rtRNA=False)
+    bam_file.count_coverage()
+    coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site-1)
+
+
+    genome_length = len(bam_file.genomes[bam_file.genome_set[0]])
+    coverage_binned = binned_statistic(np.arange(len(coverage)), coverage, 'mean',
+                                       bins=int(genome_length / bin_length))
+
+    coverage_binned_mean = coverage_binned.statistic
+    zerio_index = round(len(coverage_binned_mean)/2)
+    coverage_binned_mean = np.roll(coverage_binned_mean, round(zerio_index))
+
+    left_pos = np.linspace(-1, 0, num=zerio_index, endpoint=False)
+    right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zerio_index), endpoint=True)
+    relative_pos = np.concatenate([left_pos, right_pos])
+
+    genome_index = np.arange(1, genome_length)
+    genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
+
+    data_exp = pd.DataFrame(data=dict(Relative_position=relative_pos,
+                                      genome_position=genome_index,
+                                      Count=coverage_binned_mean))
+    data_exp.to_csv(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.csv'))
+
+
+
+
+    x_fliter = relative_pos > 0
+    inf_filter = ~np.isinf(np.log(coverage_binned_mean))
+    filter = np.logical_and(x_fliter, inf_filter)
+
+    x_fliter = relative_pos <= 0
+    inf_filter = ~np.isinf(np.log(coverage_binned_mean))
+    filter2 = np.logical_and(x_fliter, inf_filter)
+
+    filters = [filter, filter2]
+
+
+    fig1, ax2 = plt.subplots(1, 1, figsize=(10, 10))
+    ax2.scatter(relative_pos, np.log2(coverage_binned_mean), c='#85C1E9')
+    ax2.plot()
+    results = []
+    for flt in filters:
+        ret = linregress(relative_pos[flt], np.log2(coverage_binned_mean)[flt])
+
+        results.append(ret)
+
+        ax2.plot(relative_pos[flt], ret.intercept + ret.slope * relative_pos[flt],
+                 '--r', label='Slope: %.3f' % ret.slope, c='#F1948A')
+
+    ax2.set_title('Average Slope %.3f' % np.mean([np.abs(ret.slope) for ret in results]))
+    ax2.legend()
+    fig1.show()
+
+    fig1.savefig(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.svg'), transparent=True)
