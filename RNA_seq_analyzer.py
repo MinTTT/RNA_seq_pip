@@ -108,7 +108,6 @@ class RNASeqAnalyzer:
 
         # make index files
         if os.path.basename(self.reference_file_name) not in self.file_in_dir:
-
             cmd_copy_ref = f'cp {self.reference_file_path} ' \
                            f'{os.path.join(self.output_dir, self.reference_file_name)}'
             # update the reference file ps
@@ -185,6 +184,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import scipy.stats as stats
     import sciplot as splt
+
     splt.whitegrid()
     read1 = '/media/fulab/AD.CaoQian/2-rpoB_Deeqseq/rpoBDeeqseq/Filter_SOAPnuke/Clean/MG1655/MG1655_1.fq.gz'
     read2 = '/media/fulab/AD.CaoQian/2-rpoB_Deeqseq/rpoBDeeqseq/Filter_SOAPnuke/Clean/MG1655/MG1655_2.fq.gz'
@@ -199,15 +199,14 @@ if __name__ == '__main__':
                       paired_flag=sample.paired_flag)
     bam_file.separate_bam_by_strand(clean_rtRNA=False)
     bam_file.count_coverage()
-    coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site-1)
-
+    coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site - 1)
 
     genome_length = len(bam_file.genomes[bam_file.genome_set[0]])
     coverage_binned = binned_statistic(np.arange(len(coverage)), coverage, 'mean',
                                        bins=int(genome_length / bin_length))
 
     coverage_binned_mean = coverage_binned.statistic
-    zerio_index = round(len(coverage_binned_mean)/2)
+    zerio_index = round(len(coverage_binned_mean) / 2)
     coverage_binned_mean = np.roll(coverage_binned_mean, round(zerio_index))
 
     left_pos = np.linspace(-1, 0, num=zerio_index, endpoint=False)
@@ -222,9 +221,6 @@ if __name__ == '__main__':
                                       Count=coverage_binned_mean))
     data_exp.to_csv(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.csv'))
 
-
-
-
     x_fliter = relative_pos > 0
     inf_filter = ~np.isinf(np.log(coverage_binned_mean))
     filter = np.logical_and(x_fliter, inf_filter)
@@ -234,7 +230,6 @@ if __name__ == '__main__':
     filter2 = np.logical_and(x_fliter, inf_filter)
 
     filters = [filter, filter2]
-
 
     fig1, ax2 = plt.subplots(1, 1, figsize=(10, 10))
     ax2.scatter(relative_pos, np.log2(coverage_binned_mean), c='#85C1E9')

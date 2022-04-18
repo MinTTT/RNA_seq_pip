@@ -229,6 +229,7 @@ class BAMile:
                 self.fmt_print('Loading forward strand coverage.')
                 self.forward_coverage_ps = self.bam_ps + '.fwd_depth.tsv'
                 fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+                fwd_tsv.genome = fwd_tsv.genome.astype(str)
                 self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
                 # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
                 for genome in self.fwd_genome_set:
@@ -237,6 +238,7 @@ class BAMile:
                 self.fmt_print('Loading reverse strand coverage.')
                 self.reverse_coverage_ps = self.bam_ps + '.rev_depth.tsv'
                 rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+                rev_tsv.genome = rev_tsv.genome.astype(str)
                 self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
                 # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
                 for genome in self.rev_genome_set:
@@ -372,6 +374,7 @@ class BAMile:
             print(f"[{os.path.basename(self.bam_ps)}] -> Forward strand reads coverage: {cmd_depth}")
             status = sbps.run(cmd_depth, shell=True, cwd=os.getcwd())
             fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+            fwd_tsv['genome'] = fwd_tsv['genome'].astype(str)
             self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
             # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
             for genome in self.fwd_genome_set:
@@ -388,6 +391,7 @@ class BAMile:
             print(f"[{os.path.basename(self.bam_ps)}] -> Reverse strand reads coverage: {cmd_depth}")
             status = sbps.run(cmd_depth, shell=True, cwd=os.getcwd())
             rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
+            rev_tsv['genome'] = rev_tsv['genome'].astype(str)
             self.rev_genome_set = list(set(rev_tsv['genome'].tolist()))
             # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
             for genome in self.rev_genome_set:
