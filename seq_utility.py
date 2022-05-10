@@ -23,6 +23,8 @@ from typing import Union, Tuple, List, Dict, Optional
 import subprocess as sbps
 from functools import partial
 from scipy.ndimage import convolve1d
+
+
 # […]
 
 
@@ -407,38 +409,73 @@ class BAMile:
                                                  (self.coverage_all / 1e9)
         return None
 
-    def fetch_coverage(self, genome, start, end, strand=None, move_average: int = None) -> np.ndarray:
+    def fetch_coverage(self, chromosome, start=None, end=None, strand=None, move_average: int = None) -> np.ndarray:
         """
         fetch coverage from coverage data, execute count_coverage before this method.
-        :param genome:
-        :param start:
-        :param end:
-        :param strand:
-        :param move_average:
-        :return:
+
+        Parameters
+        -------------------
+        chromosome: str
+            the name of chromosome.
+        start: int
+            start position site
+        end: int
+            end position site (include)
+        strand: + or -, default None
+            if set None, will count all reads in both strands.
+        move_average: int
+            bin size
+
         """
-        genome_length = len(self.genomes[genome])
+        genome_length = len(self.genomes[chromosome])
+
+        # the bacterial chromosome is circular, some query may spam the physical end and start positions
+        if end is None:
+            end = genome_length
+        if strand is None:
+            start = 1
         if start > end:
             length = end - (start - genome_length) + 1
         else:
             length = end - start + 1
+
         if strand == '+':
-            genome_coverage = self.reverse_coverage_data[genome]  # type: np.ndarray
+            genome_coverage = self.reverse_coverage_data[chromosome]  # type: np.ndarray
         elif strand == '-':
-            genome_coverage = self.forward_coverage_data[genome]  # type: np.ndarray
+            genome_coverage = self.forward_coverage_data[chromosome]  # type: np.ndarray
         else:
-            genome_coverage = self.reverse_coverage_data[genome] + \
-                              self.forward_coverage_data[genome]
+            genome_coverage = self.reverse_coverage_data[chromosome] + \
+                              self.forward_coverage_data[chromosome]
+
+        raw_coverage = np.roll(genome_coverage, -(start - 1))[:length]
         if (move_average is None) or (move_average == 0):
-            return np.roll(genome_coverage, -(start - 1))[:length]
+            return raw_coverage
         else:
-            raw_coverage = np.roll(genome_coverage, -(start - 1))[:length]
-            # avg_coverage = np.array(
-            #     [np.mean(raw_coverage[i:i + move_average]) for i in range(move_average + end - start + 1)])
-            avg_coverage = convolve1d(raw_coverage, np.ones(move_average)/move_average, mode='wrap')
+            avg_coverage = convolve1d(raw_coverage, np.ones(move_average) / move_average, mode='wrap')
             return avg_coverage
 
     def plot_coverage(self, genome, start, end, strand=None, window=10, ax: plt.axes = None, **kwargs):
+        """
+
+        Parameters
+        ----------
+        genome: str
+            chromosome name
+        start: int
+            base start position
+        end: int
+            base end position
+        strand: str, '+' or '-', default None
+            strand
+        window: int
+            bin size
+        ax: matplotlib.pyplot.ax
+        kwargs
+
+        Returns
+        -------
+
+        """
 
         feature_x = np.arange(start, end + 1, step=1)
 
@@ -506,7 +543,9 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
     data_frame['coverage'] = np.array(coverage)
     all_counts = bamflie.cleaned_reads
     data_frame['RPKM'] = data_frame['counts'] * (1000 / data_frame['length']) * (1e6 / all_counts)
-    data_frame['TPM'] = data_frame['RPKM'] * 1e6 / data_frame['RPKM'].sum()
+    # data_frame['TPM'] = data_frame['RPKM'] * 1e6 / data_frame['RPKM'].sum()
+    data_frame['TPM'] = 1e6 * data_frame['counts'] / data_frame['length'] / \
+                        np.sum(data_frame['counts'] / data_frame['length'])
     data_frame['coverage_FPKM'] = data_frame['coverage'] / data_frame['length']
     data_frame['coverage_TPM'] = data_frame['coverage_FPKM'] * 1e6 / data_frame['coverage_FPKM'].sum()
     # data_frame.to_csv(bam_ps + '.custom.cds_counts.csv')
@@ -546,7 +585,8 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     return cds_tsv, all_reads
 
 
-def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True) -> Tuple[pd.DataFrame, BAMile]:
+def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True) -> \
+Tuple[pd.DataFrame, BAMile]:
     custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps, feature, paired_flag=paired_flag)
     bamflie.fmt_print('HTseq counting.')
     htseq_counts, all_reads = count_reads_htseq([bamflie.cleaned_reads_reverse_strand_ps,
@@ -558,6 +598,68 @@ def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 
     data_frame['htseq_TPM'] = data_frame['htseq_FPKM'] * 1e6 / data_frame['htseq_FPKM'].sum()
     # data_frame.to_csv(bam_ps + '.combined.cds_counts.csv')
     return data_frame, bamflie
+
+
+def base_position2relative_pos(pos, genome_length, ori=1, ter=None) -> Tuple[float, float]:
+    """
+    Convert the base position to the relative position and the angle.
+    Parameters
+    ----------
+    pos: int
+        base position in chromosome.
+    genome_length: int
+        genome or chromosome length.
+    ori: int
+        the replication start site.
+    ter: int, default None.
+        the terminus site
+
+    Returns
+    -------
+    relative_pos, phi_pos: Tuple[float, float]
+    the relative position in genome and angle in a circle for denoting the base position
+
+    """
+
+    half_genome = genome_length / 2.
+    if ter is None:
+        if half_genome > ori:
+            ter = ori + half_genome
+        else:
+            ter = ori - half_genome
+
+    phi_ori = ori / genome_length * 2 * np.pi
+    phi_ter = ter / genome_length * 2 * np.pi
+    phi_pos = pos / genome_length * 2 * np.pi
+
+    if phi_ori > phi_ter:
+        right_phi = 2 * np.pi + phi_ter - phi_ori
+    else:
+        right_phi = phi_ter - phi_ori
+
+    left_phi = 2 * np.pi - right_phi
+
+    if phi_pos > phi_ter:
+        relative_pos = (phi_pos - phi_ter) / left_phi - 1.
+    else:
+        relative_pos = 1 - (phi_ter - phi_pos) / right_phi
+
+    return relative_pos, phi_pos
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # %%

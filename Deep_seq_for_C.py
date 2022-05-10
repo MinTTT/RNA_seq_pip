@@ -25,7 +25,7 @@ from scipy.stats import binned_statistic, linregress
 import matplotlib.pyplot as plt
 import sciplot as splt
 from RNA_seq_analyzer import RNASeqAnalyzer
-from seq_utility import BAMile
+from seq_utility import BAMile, base_position2relative_pos
 from tqdm import tqdm
 import _thread as thread
 import subprocess as sbp
@@ -35,7 +35,7 @@ splt.whitegrid()
 global_lock = thread.allocate_lock()
 
 
-def deep_seq_pip(sample_name, ref_ps, reads, ori_site, bin_length, export_dir, index) -> int:
+def deep_seq_pip(sample_name, ref_ps, reads, ori_site, ter_site, bin_length, export_dir, index) -> int:
     """
 
     Parameters
@@ -66,46 +66,65 @@ def deep_seq_pip(sample_name, ref_ps, reads, ori_site, bin_length, export_dir, i
                             seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 64}, output_dir=export_dir)
     sample.seq_data_align()
 
-    def coverage_process(sample: RNASeqAnalyzer, ori_site, bin_length, index):
+    def coverage_process(sample: RNASeqAnalyzer, ori_site, ter_site, bin_length, index):
+        """
+
+        Parameters
+        ----------------
+        sample: object
+            RNASeqAnalyzer object
+        ori_site: int
+            the location of oriC
+        bin_length: int
+
+
+        """
         thread_state[index] = True
         bam_file = BAMile(sample.bam_sorted_ps, sample.gff_ps, sample.reference_file_path,
                           paired_flag=sample.paired_flag)
         bam_file.separate_bam_by_strand(clean_rtRNA=False)
         bam_file.count_coverage()
-        coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site - 1, move_average=150)
+        # coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site - 1, move_average=150)
+        coverage = bam_file.fetch_coverage(bam_file.genome_set[0], move_average=150)
 
         genome_length = len(bam_file.genomes[bam_file.genome_set[0]])
         coverage_binned = binned_statistic(np.arange(len(coverage)), coverage, 'mean',
                                            bins=int(genome_length / bin_length))
 
         coverage_binned_mean = coverage_binned.statistic
-        zerio_index = round(len(coverage_binned_mean) / 2)
-        coverage_binned_mean = np.roll(coverage_binned_mean, round(zerio_index))
+        covg_binned_base_pos = coverage_binned.bin_edges
+        genome_index = np.array([np.int(np.mean([covg_binned_base_pos[i], covg_binned_base_pos[i+1]]))
+                                         for i in range(len(covg_binned_base_pos)-1)])
+        relative_pos = np.array([base_position2relative_pos(index, genome_length, ori_site, ter_site)[0]
+                        for index in genome_index])
 
-        left_pos = np.linspace(-1, 0, num=zerio_index, endpoint=False)
-        right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zerio_index), endpoint=True)
-        relative_pos = np.concatenate([left_pos, right_pos])
+        # zero_index = round(len(coverage_binned_mean) / 2)
+        # coverage_binned_mean = np.roll(coverage_binned_mean, round(zero_index))
+        #
+        # left_pos = np.linspace(-1, 0, num=zero_index, endpoint=False)
+        # right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zero_index), endpoint=True)
+        # relative_pos = np.concatenate([left_pos, right_pos])
 
-        genome_index = np.arange(1, genome_length)
-        genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
+        # genome_index = np.arange(1, genome_length)
+        # genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
         inf_filter = coverage_binned_mean > 0
         log2_coverage = np.zeros(len(coverage_binned_mean))
         log2_coverage[inf_filter] = np.log2(coverage_binned_mean[inf_filter])
 
+        # Export statistic data
         data_exp = pd.DataFrame(data=dict(Relative_position=relative_pos,
                                           genome_position=genome_index,
                                           Count=coverage_binned_mean,
                                           Log2_count=log2_coverage))
         data_exp.to_csv(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.csv'))
 
+        # Plot the coverage
+        # filter for two arms of chromosome
         x_fliter = relative_pos >= 0
         filter = np.logical_and(x_fliter, inf_filter)
-
         x_fliter2 = relative_pos <= 0
         filter2 = np.logical_and(x_fliter2, inf_filter)
-
         filters = [filter, filter2]
-
         fig1, ax2 = plt.subplots(1, 1, figsize=(12, 12))
         results = []
 
@@ -114,7 +133,7 @@ def deep_seq_pip(sample_name, ref_ps, reads, ori_site, bin_length, export_dir, i
             results.append(ret)
             ax2.scatter(relative_pos[flt], np.log2(coverage_binned_mean[flt]), c='#85C1E9')
             ax2.plot(relative_pos[flt], ret.intercept + ret.slope * relative_pos[flt],
-                     '--r', label='Slope: %.3f' % ret.slope, c='#F1948A')
+                     '--', label='Slope: %.3f' % ret.slope, c='#F1948A')
 
         ax2.set_title('%s Average Slope: %.3f' %
                       (sample.sample_name, np.mean([np.abs(ret.slope) for ret in results])),
@@ -129,17 +148,18 @@ def deep_seq_pip(sample_name, ref_ps, reads, ori_site, bin_length, export_dir, i
         thread_state[index] = False
         return None
 
-    t_id = thread.start_new_thread(coverage_process, (sample, ori_site, bin_length, index))
+    t_id = thread.start_new_thread(coverage_process, (sample, ori_site, ter_site, bin_length, index))
     return t_id
 
 
 # %%
 if __name__ == '__main__':
     # %%
-    parent_dir = r'/media/fulab/fulab_zc_1/seq_data/LLW_data/20220321_data/soapnuke/clean'
+    parent_dir = r'/media/fulab/fulab_zc_1/seq_data/LLW_data/20220322_17_sample_data/17_sample/soapnuke/clean'
     ref_ps = '/media/fulab/fulab_zc_1/seq_data/Genome_ref/1655_genome_Liu_lab_20220322.fa'
-    exp_dir = r'/media/fulab/fulab_zc_1/seq_data/LLW_data/20220321_data/20220321_data_deep_seq_results'
+    exp_dir = r'/media/fulab/fulab_zc_1/seq_data/LLW_data/20220322_17_sample_data/17_sample_deep_seq_results'
     ori_site = 1  # 3925859
+    ter_site = 2305111
     bin_length = 5000
 
     sample_dir = [fold.name for fold in os.scandir(parent_dir) if fold.is_dir()]
@@ -154,7 +174,7 @@ if __name__ == '__main__':
     thread_state = [False] * len(list(sample_msg.keys()))
 
     for index, (sample, reads) in enumerate(tqdm(sample_msg.items())):
-        th_id = deep_seq_pip(sample, ref_ps, reads, ori_site, bin_length, exp_dir, index)
+        th_id = deep_seq_pip(sample, ref_ps, reads, ori_site, ter_site, bin_length, exp_dir, index)
 
     while True in thread_state:
         time.sleep(5)
