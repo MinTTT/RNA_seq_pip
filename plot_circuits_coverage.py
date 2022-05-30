@@ -58,7 +58,7 @@ for sample in np.arange(1, 6):
     ori_coverage_dict['RNAII_covg'].append(RNAII.sum())
     ori_coverage_dict['RNAI_covg'].append(RNAI.sum())
 
-
+    #
     # fig, ax = plt.subplots(2, 1, figsize=(10, 4), gridspec_kw={'height_ratios': [3, 1]})
     # # gene = genes_dict['CDS'][50]  # type: GeneFeature
     # a = bamfile.plot_coverage('NH3.23_plasmid.1', 0, 5602, window=200, ax=ax[0])

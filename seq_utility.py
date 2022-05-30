@@ -23,7 +23,7 @@ from typing import Union, Tuple, List, Dict, Optional
 import subprocess as sbps
 from functools import partial
 from scipy.ndimage import convolve1d
-
+from scipy.stats import binned_statistic
 
 # […]
 
@@ -203,10 +203,33 @@ class BAMile:
         dump(dump_dict, self.dump_ps)
 
     def set_gene_features(self, gff_ps):
+        """
+        import *.gff file to set the gene annotations.
+        Parameters
+        ----------
+        gff_ps: str
+            path of gff file
+
+        Returns
+        -------
+
+        """
         self.gene_features = gff_parser(gff_ps)
         return None
 
     def load_data(self, data_ps):
+        """
+        Load binary data
+
+        Parameters
+        ----------
+        data_ps: str
+            bin file path
+
+        Returns
+        -------
+
+        """
         self.fmt_print('Loading data.')
         self.dump_ps = data_ps
         load_data = load(self.dump_ps)  # type: dict
@@ -331,9 +354,15 @@ class BAMile:
         512	001000000000	alignment fails quality checks
         1024	010000000000	PCR or optical duplicate
         2048	100000000000	supplementary alignment (e.g. aligner specific, could be a portion of a split read or a tied region)
-        :param clean_rtRNA:
-        :return:
+        Parameters
+        ----------
+        clean_rtRNA
+
+        Returns
+        -------
+
         """
+
         if (self.reads_forward_strand_ps is None) or (self.reads_reverse_strand_ps is None):
             self.reads_forward_strand_ps = self.bam_ps + '.fwd_strand.bam'
             if self.paired_flag:
@@ -456,6 +485,7 @@ class BAMile:
 
     def plot_coverage(self, genome, start, end, strand=None, window=10, ax: plt.axes = None, **kwargs):
         """
+        Plot the coverage
 
         Parameters
         ----------
@@ -470,23 +500,40 @@ class BAMile:
         window: int
             bin size
         ax: matplotlib.pyplot.ax
-        kwargs
+        kwargs: dict
+            the arguments for plt.bar
 
         Returns
         -------
 
         """
 
+
         feature_x = np.arange(start, end + 1, step=1)
+
+        def binn_reads(x: np.array, coverage, window):
+            binned_coverage = binned_statistic(x, coverage, 'mean', bins=int(len(x)/window))
+            coverage_binned_mean = binned_coverage.statistic
+            base_edges = binned_coverage.bin_edges
+            base_x = np.array([np.mean([base_edges[i], base_edges[i+1]]) for i in range(len(base_edges)-1)])
+            return base_x, base_edges, coverage_binned_mean
+
 
         if strand is not None:
             coverage = self.fetch_coverage(genome, start, end, strand, move_average=window)
-            rets = np.hstack([feature_x.reshape(-1, 1), coverage.reshape(-1, 1)])
+
+            base_x, base_deges, coverage_binned_mean = binn_reads(feature_x, coverage, window=window)
+            rets = np.hstack([base_x.reshape(-1, 1), coverage_binned_mean.reshape(-1, 1)])
         else:
             coverage_sense = self.fetch_coverage(genome, start, end, strand='+', move_average=window)
             coverage_antisense = self.fetch_coverage(genome, start, end, strand='-', move_average=window)
+
+            base_x, base_deges, coverage_binned_mean_sense = binn_reads(feature_x, coverage_sense, window=window)
+            base_x, base_deges, coverage_binned_mean_amtisense = binn_reads(feature_x, coverage_antisense, window=window)
+
             rets = np.hstack(
-                [feature_x.reshape(-1, 1), coverage_sense.reshape(-1, 1), coverage_antisense.reshape(-1, 1)])
+                [base_x.reshape(-1, 1), coverage_binned_mean_sense.reshape(-1, 1),
+                 coverage_binned_mean_amtisense.reshape(-1, 1)])
 
         if ax is not False:
             if ax is None:
@@ -496,13 +543,28 @@ class BAMile:
 
         if strand is not None:
             if strand == '+':
-                ax.bar(feature_x, coverage, width=1, **kwargs)
+                # ax.bar(base_x, coverage_binned_mean, width=window, **kwargs)
+                # ax.hlines(coverage_binned_mean, base_deges[:-1], base_deges[1:], **kwargs)
+                ax.plot(feature_x,  coverage, color='k')
+                ax.fill_between(feature_x, 0, coverage, color='#F89388')
             if strand == '-':
-                ax.bar(feature_x, -coverage, width=1, **kwargs)
-            return np.hstack([feature_x.reshape(-1, 1), coverage.reshape(-1, 1)])
+                # ax.bar(base_x, -coverage_binned_mean, width=window, **kwargs)
+                # ax.plot(base_x,  -coverage_binned_mean, color='k')
+                # ax.hlines(-coverage_binned_mean, base_deges[:-1], base_deges[1:], **kwargs)
+                ax.plot(feature_x,  -coverage, color='k')
+                ax.fill_between(feature_x, 0, -coverage, color='#88F8CB')
+            return rets
         else:
-            ax.bar(feature_x, coverage_sense, width=1, **kwargs)
-            ax.bar(feature_x, -coverage_antisense, width=1, **kwargs)
+            # ax.hlines(coverage_binned_mean_sense, base_deges[:-1], base_deges[1:], **kwargs)
+            # ax.hlines(-coverage_binned_mean_amtisense, base_deges[:-1], base_deges[1:], **kwargs)
+            # ax.bar(base_x, coverage_binned_mean_sense, width=window, **kwargs)
+            # ax.bar(base_x, -coverage_binned_mean_amtisense, width=window, **kwargs)
+            # ax.plot(base_x, coverage_binned_mean_sense, color='k')
+            # ax.plot(base_x, -coverage_binned_mean_amtisense, color='k')
+            ax.plot(feature_x, coverage_sense, color='k')
+            ax.fill_between(feature_x, 0, coverage_sense, color='#F89388')
+            ax.plot(feature_x, -coverage_antisense, color='k')
+            ax.fill_between(feature_x, 0, -coverage_antisense, color='#88F8CB')
             return rets
 
 
