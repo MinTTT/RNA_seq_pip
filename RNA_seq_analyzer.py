@@ -167,84 +167,85 @@ class RNASeqAnalyzer:
 
 # %%
 if __name__ == '__main__':
-    # read1 = r'./example_data/seq_data/A1.raw_1.fastq.gz'
-    # read2 = r'./example_data/seq_data/A1.raw_2.fastq.gz'
-    # gff_file = r'./example_data/annotation_file/CLB_strain.gff'
-    # sample_name = 'CaoLB'
-    # ref_ps = r'./example_data/annotation_file/CLB_strain.fa'
+    #%%
+    read1 = r'./example_data/seq_data/A1/A1.raw_1.fastq.gz'
+    read2 = r'./example_data/seq_data/A1/A1.raw_2.fastq.gz'
+    gff_file = r'./example_data/annotation_file/NC_000913.3_liulab.gff'
+    sample_name = 'TestAD'
+    ref_ps = r'./example_data/annotation_file/NC_000913.3_liulab.fa'
     # adapters = ['AGATCGGAAGAGC', 'AGATCGGAAGAGC']
-    # sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=gff_file,
-    #                         seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32}, adapter=adapters)
-    # sample.seq_data_align()
-    # sample.counts_statistic()
-
-    # %%
-
-    from scipy.stats import binned_statistic, linregress
-    import matplotlib.pyplot as plt
-    import scipy.stats as stats
-    import sciplot as splt
-
-    splt.whitegrid()
-    read1 = '/media/fulab/AD.CaoQian/2-rpoB_Deeqseq/rpoBDeeqseq/Filter_SOAPnuke/Clean/MG1655/MG1655_1.fq.gz'
-    read2 = '/media/fulab/AD.CaoQian/2-rpoB_Deeqseq/rpoBDeeqseq/Filter_SOAPnuke/Clean/MG1655/MG1655_2.fq.gz'
-    ref_ps = '/home/fulab/home/fulab/tmp/pycharm_project_757/example_data/annotation_file/GCA_000005845.2_ASM584v2_genomic.fasta'
-    sample_name = 'MG1655'
-    ori_site = 3925859
-    bin_length = 5000
-    sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=None,
+    sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=gff_file,
                             seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32})
     sample.seq_data_align()
-    bam_file = BAMile(sample.bam_sorted_ps, sample.gff_ps, sample.reference_file_path,
-                      paired_flag=sample.paired_flag)
-    bam_file.separate_bam_by_strand(clean_rtRNA=False)
-    bam_file.count_coverage()
-    coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site - 1)
+    sample.counts_statistic()
 
-    genome_length = len(bam_file.genomes[bam_file.genome_set[0]])
-    coverage_binned = binned_statistic(np.arange(len(coverage)), coverage, 'mean',
-                                       bins=int(genome_length / bin_length))
-
-    coverage_binned_mean = coverage_binned.statistic
-    zerio_index = round(len(coverage_binned_mean) / 2)
-    coverage_binned_mean = np.roll(coverage_binned_mean, round(zerio_index))
-
-    left_pos = np.linspace(-1, 0, num=zerio_index, endpoint=False)
-    right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zerio_index), endpoint=True)
-    relative_pos = np.concatenate([left_pos, right_pos])
-
-    genome_index = np.arange(1, genome_length)
-    genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
-
-    data_exp = pd.DataFrame(data=dict(Relative_position=relative_pos,
-                                      genome_position=genome_index,
-                                      Count=coverage_binned_mean))
-    data_exp.to_csv(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.csv'))
-
-    x_fliter = relative_pos > 0
-    inf_filter = ~np.isinf(np.log(coverage_binned_mean))
-    filter = np.logical_and(x_fliter, inf_filter)
-
-    x_fliter = relative_pos <= 0
-    inf_filter = ~np.isinf(np.log(coverage_binned_mean))
-    filter2 = np.logical_and(x_fliter, inf_filter)
-
-    filters = [filter, filter2]
-
-    fig1, ax2 = plt.subplots(1, 1, figsize=(10, 10))
-    ax2.scatter(relative_pos, np.log2(coverage_binned_mean), c='#85C1E9')
-    ax2.plot()
-    results = []
-    for flt in filters:
-        ret = linregress(relative_pos[flt], np.log2(coverage_binned_mean)[flt])
-
-        results.append(ret)
-
-        ax2.plot(relative_pos[flt], ret.intercept + ret.slope * relative_pos[flt],
-                 '--r', label='Slope: %.3f' % ret.slope, c='#F1948A')
-
-    ax2.set_title('Average Slope %.3f' % np.mean([np.abs(ret.slope) for ret in results]))
-    ax2.legend()
-    fig1.show()
-
-    fig1.savefig(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.svg'), transparent=True)
+    # %% Deep Seq
+    #
+    # from scipy.stats import binned_statistic, linregress
+    # import matplotlib.pyplot as plt
+    # import scipy.stats as stats
+    # import sciplot as splt
+    #
+    # splt.whitegrid()
+    # read1 = './example_data/seq_data/A1/A1.raw_1.fastq.gz'
+    # read2 = './example_data/seq_data/A1/A1.raw_2.fastq.gz'
+    # ref_ps = '/home/fulab/home/fulab/tmp/pycharm_project_757/example_data/annotation_file/GCA_000005845.2_ASM584v2_genomic.fasta'
+    # sample_name = 'MG1655'
+    # ori_site = 3925859
+    # bin_length = 5000
+    # sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=None,
+    #                         seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 32})
+    # sample.seq_data_align()
+    # bam_file = BAMile(sample.bam_sorted_ps, sample.gff_ps, sample.reference_file_path,
+    #                   paired_flag=sample.paired_flag)
+    # bam_file.separate_bam_by_strand(clean_rtRNA=False)
+    # bam_file.count_coverage()
+    # coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site - 1)
+    #
+    # genome_length = len(bam_file.genomes[bam_file.genome_set[0]])
+    # coverage_binned = binned_statistic(np.arange(len(coverage)), coverage, 'mean',
+    #                                    bins=int(genome_length / bin_length))
+    #
+    # coverage_binned_mean = coverage_binned.statistic
+    # zerio_index = round(len(coverage_binned_mean) / 2)
+    # coverage_binned_mean = np.roll(coverage_binned_mean, round(zerio_index))
+    #
+    # left_pos = np.linspace(-1, 0, num=zerio_index, endpoint=False)
+    # right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zerio_index), endpoint=True)
+    # relative_pos = np.concatenate([left_pos, right_pos])
+    #
+    # genome_index = np.arange(1, genome_length)
+    # genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
+    #
+    # data_exp = pd.DataFrame(data=dict(Relative_position=relative_pos,
+    #                                   genome_position=genome_index,
+    #                                   Count=coverage_binned_mean))
+    # data_exp.to_csv(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.csv'))
+    #
+    # x_fliter = relative_pos > 0
+    # inf_filter = ~np.isinf(np.log(coverage_binned_mean))
+    # filter = np.logical_and(x_fliter, inf_filter)
+    #
+    # x_fliter = relative_pos <= 0
+    # inf_filter = ~np.isinf(np.log(coverage_binned_mean))
+    # filter2 = np.logical_and(x_fliter, inf_filter)
+    #
+    # filters = [filter, filter2]
+    #
+    # fig1, ax2 = plt.subplots(1, 1, figsize=(10, 10))
+    # ax2.scatter(relative_pos, np.log2(coverage_binned_mean), c='#85C1E9')
+    # ax2.plot()
+    # results = []
+    # for flt in filters:
+    #     ret = linregress(relative_pos[flt], np.log2(coverage_binned_mean)[flt])
+    #
+    #     results.append(ret)
+    #
+    #     ax2.plot(relative_pos[flt], ret.intercept + ret.slope * relative_pos[flt],
+    #              '--r', label='Slope: %.3f' % ret.slope, c='#F1948A')
+    #
+    # ax2.set_title('Average Slope %.3f' % np.mean([np.abs(ret.slope) for ret in results]))
+    # ax2.legend()
+    # fig1.show()
+    #
+    # fig1.savefig(os.path.join(sample.output_dir, f'{sample_name}_depth_statistic.svg'), transparent=True)

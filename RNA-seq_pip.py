@@ -32,10 +32,11 @@ sample_names = os.listdir(sample_dir)
 sample_pars_list = [dict(name=sample, fasta_file=os.listdir(os.path.join(sample_dir, sample))) for sample in
                     sample_names]
 
-genome_fa = "./example_data/annotation_file/NC_000913.3.fasta"
-gff = "./example_data/annotation_file/NC_000913.3.gff3"
+genome_fa = "./example_data/annotation_file/NC_000913.3_liulab.fa"
+gff = "./example_data/annotation_file/NC_000913.3_liulab.gff"
 
 seq_data_suffix = '.fq.gz'
+
 
 def stat_thread(obj: RNASeqAnalyzer, thread_index: int):
     obj.counts_statistic()
@@ -60,9 +61,8 @@ for sample in sample_pars_list:
         thread_exit.append(False)
         thread.start_new_thread(stat_thread, (process_pip, thread_init))
         thread_init += 1
-        while sum([True if sg == False else False for sg in thread_exit]) >= 3:
+        while sum([True if sg is False else False for sg in thread_exit]) >= 3:
             sleep(10)
-
 
 while False in thread_exit:
     sleep(5)
