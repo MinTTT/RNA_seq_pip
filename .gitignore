@@ -2,6 +2,7 @@ example_data
 A1_andong_output
 CaoLB_output
 .idea
+.history
 *.sam
 *.csv
 *.bam
@@ -9,6 +10,5 @@ CaoLB_output
 *.log
 *.bai
 *.bt2
-*.fasta
 *.bed
 

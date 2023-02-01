@@ -5,7 +5,7 @@
  @author: Pan M. CHU
  @Email: pan_chu@outlook.com
 """
-
+#%%          
 # Built-in/Generic Imports
 import os
 import sys
@@ -19,7 +19,7 @@ from Bio import SeqIO
 
 def gb2gff(in_file, fasta=True):
     """
-    convert gb file to gff file.
+    convert .gb file to .gff file and .fa file.
     :param in_file: str, input gb file dir
     :param fasta: bool, default is True, and convert the gb file to .fasta file simultaneously.
     :return: None

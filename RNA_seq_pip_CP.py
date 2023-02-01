@@ -27,7 +27,7 @@ def stat_thread(obj: RNASeqAnalyzer, thread_index: int):
 
 
 # […]
-
+# sample info:
 samples_pars = {"1321_1": dict(ref_ps=r"./example_data/annotation_file/NH3.23.fasta",
                                gff_ps=r"./example_data/annotation_file/NH3.23.gff"),
                 "1321_2": dict(ref_ps=r"./example_data/annotation_file/NH3.23.fasta",
