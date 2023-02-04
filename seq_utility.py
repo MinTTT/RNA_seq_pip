@@ -588,7 +588,7 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
                 gene_name = cds.Name
             except AttributeError:
                 try:
-                    gene_name = cds.ID
+                    gene_name = cds.label
                 except AttributeError:
                     print(cds)
                     raise SystemError("Please check annotation file!")

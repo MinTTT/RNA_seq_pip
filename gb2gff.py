@@ -36,9 +36,9 @@ def gb2gff(in_file, fasta=True):
         with open(in_file) as gbfile:
             gb = SeqIO.parse(gbfile, "genbank")
             features = [feature for feature in gb]
-            print(f"features number: {len(features)}.")
+            print(f"features number: {len(features[0])}.")
             with open(fasta_file, 'w') as fafile:
-                SeqIO.write(features[0], fafile, 'fasta')
+                SeqIO.write(features, fafile, 'fasta')
     return None
 
 # %%

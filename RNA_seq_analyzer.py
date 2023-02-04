@@ -45,7 +45,7 @@ class RNASeqAnalyzer:
             self.paired_flag = True
         self.reference_file_name = os.path.basename(self.reference_file_path)  # type: str
         self.reference_file_dir = os.path.dirname(self.reference_file_path)
-        self.indexed_base_name = self.reference_file_name.split('.')[0]
+        self.indexed_base_name = '.'.join(self.reference_file_name.split('.')[:-1])
         self.adapter = adapter  # type: Union[str, None]  # adapter sequence for cutting.
         self.bowtie_pars = {'-N': 1, '-q': '--phred64', '-p': 8}
         self.time_now = datetime.datetime.now()
@@ -114,7 +114,7 @@ class RNASeqAnalyzer:
             self.reference_file_path = os.path.join(self.output_dir, self.reference_file_name)
             self.append_to_log(f'[{self.sample_name}] -> Copy Reference: {cmd_copy_ref}')
             status1 = self.cmd_shell(cmd_copy_ref)
-            cmd_index = f'bowtie2-build -f {self.reference_file_path} {self.indexed_base_name}'
+            cmd_index = f'bowtie2-build -f {self.reference_file_name} {self.indexed_base_name}'
             print(f'[{self.sample_name}] -> Generate indexed reference: {cmd_index}')
             status2 = self.cmd_shell(cmd_index, cwd=self.output_dir)
 

@@ -1,0 +1,14 @@
+{
+    "genome_annotations": {
+        "NH3.23": {"fasta_ps": "./annotation_file/NH3.23.fasta",
+                   "gff_ps": "./annotation_file/NH3.23.gff"
+                  },
+        "NH3.24": {"fasta_ps": "./annotation_file/NH3.24.fasta",
+                    "gff_ps": "./annotation_file/NH3.24.gff"}},
+
+
+    "samples":{"1321_1": ["NH3.23", "./example_data/seq_data"],
+                "4041":["NH3.23", "./example_data/seq_data"]},
+
+    "save_dir": "./example_data/data_processed"              
+}
