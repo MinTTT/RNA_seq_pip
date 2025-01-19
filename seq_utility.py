@@ -682,14 +682,30 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
     return data_frame, bamflie
 
 
-def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', reverse: str = 'reverse'):
+def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', stranded: str = 'reverse'):
+    """
+
+    Parameters
+    ----------
+    bam_ps
+    gff_ps
+    feature
+    stranded: str
+        For stranded=yes and single-end reads, the read has to be mapped to the same strand as the feature.
+        For paired-end reads, the first read has to be on the same strand and the second read on the opposite strand.
+        For stranded=reverse, these rules are reversed.
+
+    Returns
+    -------
+
+    """
     if isinstance(bam_ps, str):
         bam_ps = [bam_ps]
 
     id = 'locus_tag'
     export_name = os.path.join(os.path.split(bam_ps[0])[0], 'htseq.cds_counts.tsv')
     if 'htseq.cds_counts.tsv' not in os.listdir(os.path.split(bam_ps[0])[0]):
-        cmd_htseq = f"htseq-count -f bam -s {reverse} -r pos -t {feature} -i {id} -m union " \
+        cmd_htseq = f"htseq-count -f bam -s {stranded} -r pos -t {feature} -i {id} -m union " \
                     f"--nonunique fraction -a 10 -n 32 -q {' '.join(bam_ps)} {gff_ps}" \
                     + f" > {export_name}"  # the prefix was used for init env.
         print(cmd_htseq)
@@ -715,13 +731,13 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     return cds_tsv, all_reads
 
 
-def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True) -> \
-Tuple[pd.DataFrame, BAMile]:
+def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True,
+                        stranded: str = 'forward') -> Tuple[pd.DataFrame, BAMile]:
     custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps, feature, paired_flag=paired_flag)
     bamflie.fmt_print('HTseq counting.')
     htseq_counts, all_reads = count_reads_htseq([bamflie.cleaned_reads_reverse_strand_ps,
                                                  bamflie.cleaned_reads_forward_strand_ps],
-                                                gff_ps, feature)
+                                                gff_ps, feature, stranded)
     data_frame = pd.merge(custom_counts, htseq_counts, on='locus_tag', how='left')
     data_frame['htseq_FPKM'] = data_frame['htseq_counts'] * (1000 / data_frame['length']) * (
             1e6 / all_reads)

@@ -190,6 +190,7 @@ class RNASeqAnalyzer:
             self.clean_adapter = True
             self.seq_data_ps1 = os.path.join(self.output_dir, file_prefix('trimmed_adapter_', self.raw_seq_data_ps1))
             self.seq_data_ps2 = os.path.join(self.output_dir, file_prefix('trimmed_adapter_', self.raw_seq_data_ps2))
+            self.trim_log_ps = os.path.join(self.output_dir, 'trim_log.json')
 
         self.sam_file_ps = os.path.join(self.output_dir, self.sample_name + '.sam')
         self.bam_ps = os.path.join(self.output_dir, self.sample_name + '.bam')
@@ -215,12 +216,15 @@ class RNASeqAnalyzer:
                 self.log_file.write(stdout + '\n')
 
     def seq_data_align(self):
+
+        # clean raw data
         if os.path.basename(self.seq_data_ps1) not in self.file_in_dir:
             if self.clean_adapter:
                 # cmd_trime = f'cutadapt -a {self.adapter[0]} -A {self.adapter[1]}' + ' --discard-untrimmed -m 10 -o ' + \
                 #             self.seq_data_ps1 + ' -p ' + self.seq_data_ps2 + ' ' + self.raw_seq_data_ps1 + ' ' + self.raw_seq_data_ps2
-                cmd_trime = f"cutadapt -a {self.adapter[0]} -A {self.adapter[1]} --discard-untrimmed -m 10 -o " \
+                cmd_trime = f"cutadapt -g X{self.adapter[0]} -m 150 -o " \
                             f"{self.seq_data_ps1} -p {self.seq_data_ps2}" \
+                            f"--json {self.trim_log_ps}" \
                             f" {self.raw_seq_data_ps1} {self.raw_seq_data_ps2}"
                 print(f"[{self.sample_name}] -> Removing linker: " + cmd_trime)
                 status0 = sbps.Popen(cmd_trime, shell=True, stdout=sbps.PIPE, cwd=os.getcwd())
