@@ -29,6 +29,125 @@ def file_prefix(prefix, ps):
     return prefix + os.path.basename(ps)
 
 
+class DNASeqAnalyzer:
+    def __init__(self, sample_name: str, ref_ps: str, gff_ps: str = None,
+                 seq_file_path: Union[str, list] = None,
+                 bowtie_pars: dict = None, output_dir: Optional[str] = None):
+        self.sample_name = sample_name
+        
+        # high throughput sequencing data related.
+        self.seq_file_path = seq_file_path
+        # reference file related.
+        self.reference_file_path = ref_ps
+        self.reference_file_name = os.path.basename(self.reference_file_path)  # type: str
+        self.reference_file_dir = os.path.dirname(self.reference_file_path)
+        self.indexed_base_name = '.'.join(self.reference_file_name.split('.'))
+        self.gff_ps = gff_ps
+        # bowtie2 parameters
+        self.bowtie_pars = {'-N': 1, '-q': '--phred64', '-p': 8, 'score-min': 'G,9,8'}
+        if bowtie_pars is not None:
+            for key in list(bowtie_pars.keys()):
+                self.bowtie_pars[key] = bowtie_pars[key]
+        # init output_dir
+        if output_dir is None:
+            self.output_dir = os.path.join(os.getcwd(), f'{self.sample_name}_output')
+        else:
+            self.output_dir = os.path.join(output_dir, f'{self.sample_name}_output')
+        try:
+            os.makedirs(self.output_dir)
+        except FileExistsError:
+            print(f'[{self.sample_name}] -> Attention! Dir {self.output_dir} already existed!')
+
+        self.file_in_dir = os.listdir(self.output_dir)
+        self.log_file_ps = os.path.join(self.output_dir, self.sample_name + '.log')
+        # out put files
+        self.sam_file_ps = os.path.join(self.output_dir, self.sample_name + '.sam')
+        self.bam_ps = os.path.join(self.output_dir, self.sample_name + '.bam')
+        self.bam_sorted_ps = os.path.join(self.output_dir, self.sample_name + '.sorted.bam')
+        self.bam_index_ps = self.bam_sorted_ps + '.bai'
+    def seq_data_align(self):
+        """ Mapping the sequence data to the reference genome. 
+        """
+
+        # Step 1. make index files
+
+        if os.path.basename(self.reference_file_name) not in self.file_in_dir:
+            cmd_copy_ref = f'cp {self.reference_file_path} ' \
+                           f'{os.path.join(self.output_dir, self.reference_file_name)}'
+            # update the reference file ps
+            self.reference_file_path = os.path.join(self.output_dir, self.reference_file_name)
+            self.append_to_log(f'[{self.sample_name}] -> Copy Reference: {cmd_copy_ref}')
+            status1 = self.cmd_shell(cmd_copy_ref)
+            cmd_index = f'bowtie2-build -f {self.reference_file_name} {self.indexed_base_name}'
+            print(f'[{self.sample_name}] -> Generate indexed reference: {cmd_index}')
+            status2 = self.cmd_shell(cmd_index, cwd=self.output_dir)
+        # Step 2. mapping reads, Currently only support single end reads.
+        if os.path.exists(self.sam_file_ps):
+            print(f'[{self.sample_name}] -> Skip mapping reads.')
+            self.append_to_log(f'[{self.sample_name}] -> Skip mapping reads.')
+        else:
+            os.environ['BOWTIE2_INDEXES'] = self.output_dir
+            seq_file_path_string = self.seq_file_path if isinstance(self.seq_file_path, str) else ','.join(self.seq_file_path)
+            cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} ' + \
+                f'--local --no-unal ' \
+                f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
+                f' -U {seq_file_path_string} ' \
+                f'-S {self.sam_file_ps}'
+            # match bonus, int default 2
+            if self.bowtie_pars.get('match_bonus') is not None:
+                cmd_align = cmd_align + f' --ma {self.bowtie_pars["match_bonus"]}'
+            # Sets the maximum (MX) and minimum (MN) mismatch penalties.  MX = 6, MN = 2
+            if self.bowtie_pars.get('mismatch_penalty_max-min') is not None:
+                cmd_align = cmd_align + f' --mp {self.bowtie_pars["mismatch_penalty_max-min"]}'
+            # score-min, default G,20,8
+            if self.bowtie_pars.get('score-min') is not None:
+                cmd_align = cmd_align + f' --score-min {self.bowtie_pars["score-min"]}'
+
+            print(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
+            self.append_to_log(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
+            status3 = self.cmd_shell(cmd_align)
+            del os.environ['BOWTIE2_INDEXES']
+        # Step 3. generate bam file
+        # sort alignments
+        if os.path.exists(self.bam_sorted_ps):
+            print(f'[{self.sample_name}] -> Skip generating BAM.')
+            self.append_to_log(f'[{self.sample_name}] -> Skip generating BAM.')
+        else:
+            cmd_gen_bam = f'samtools view -bS -@ {self.bowtie_pars["-p"]} {self.sam_file_ps} | samtools sort -o {self.bam_sorted_ps} -@ {self.bowtie_pars["-p"]}'
+            print(f'[{self.sample_name}] -> Generating BAM: {cmd_gen_bam}')
+            self.append_to_log(f'[{self.sample_name}] -> Generating BAM: {cmd_gen_bam}')
+            status4 = self.cmd_shell(cmd_gen_bam)
+            cmd_index_bam = f'samtools index -@ {self.bowtie_pars["-p"]} {self.bam_sorted_ps} {self.bam_index_ps}'
+            print(f'[{self.sample_name}] -> Generating .bai: {cmd_index_bam}')
+            status5 = self.cmd_shell(cmd_index_bam)
+    def cmd_shell(self, cmd: str, cwd=None):
+        """"
+        execute command in shell and append output into log file.
+        """
+        if cwd is None:
+            cwd = os.getcwd()
+        stat = sbps.Popen(cmd, shell=True, stdout=sbps.PIPE, stderr=sbps.PIPE, cwd=cwd)
+        std_out_log = stat.stdout.read()
+        std_err_log = stat.stderr.read()
+
+        self.append_to_log(std_out_log)  # write log
+        if len(std_out_log) > 0:
+            print(f'[{self.sample_name}] -> ' )
+            print(std_out_log.decode('ascii'))
+
+        self.append_to_log(std_err_log)  # write log
+        if len(std_err_log) > 0:
+            print(f'[{self.sample_name}] -> {std_err_log}' )
+            print(std_err_log.decode('ascii'))
+
+        return stat
+    def append_to_log(self, stdout: Union[str, bytes]):
+        with open(self.log_file_ps, 'a') as self.log_file:
+            try:
+                self.log_file.write(stdout.decode("utf-8") + '\n')
+            except AttributeError:
+                self.log_file.write(stdout + '\n')
+
 class RNASeqAnalyzer:
     def __init__(self, sample_name: str, ref_ps: str, gff_ps: str = None,
                  seq_ps1: str = None, seq_ps2: str = None, adapter: list = None,
@@ -79,7 +198,11 @@ class RNASeqAnalyzer:
         self.counts_statistic_ps = os.path.join(self.output_dir, self.sample_name + '.expression_statistic.csv')
         self.file_in_dir = os.listdir(self.output_dir)
         self.log_file_ps = os.path.join(self.output_dir, self.sample_name + '.log')
-        self.log_file = open(self.log_file_ps, 'w')
+        if not os.path.exists(self.log_file_ps):
+            self.log_file = open(self.log_file_ps, 'w')
+        else:
+            self.log_file = open(self.log_file_ps, 'a')
+
         self.log_file.write(f'============= {self.time_now.year}-{self.time_now.month}-{self.time_now.hour}' + \
                             f'-{self.time_now.minute} ==============\n')
         self.log_file.close()
@@ -128,20 +251,28 @@ class RNASeqAnalyzer:
                             f'-S {self.sam_file_ps}'
             else:  # paired reads
                 cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
-                            f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name}' \
+                            f'--very-sensitive-local -X 1000 -I 18 --no-1mm-upfront --score-min G,9,8 --no-mixed --no-discordant ' \
+                            f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
                             f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
                             f'-S {self.sam_file_ps}'
+                """
+                change log
+                20240113 add new parameters: 
+                    --very-sensitive-local -X 1000 -I 18 --no-1mm-upfront 
+                    --score-min G,9,8 --no-mixed --no-discordant 
+                """
+
             print(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
             self.append_to_log(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
             status3 = self.cmd_shell(cmd_align)
             del os.environ['BOWTIE2_INDEXES']
 
             # sort alignments
-            cmd_gen_bam = f'samtools view -bS -@ 8 {self.sam_file_ps} | samtools sort -o {self.bam_sorted_ps} -@ 8'
+            cmd_gen_bam = f'samtools view -bS -@ {self.bowtie_pars["-p"]} {self.sam_file_ps} | samtools sort -o {self.bam_sorted_ps} -@ {self.bowtie_pars["-p"]}'
             print(f'[{self.sample_name}] -> Generating BAM: {cmd_gen_bam}')
             self.append_to_log(f'[{self.sample_name}] -> Generating BAM: {cmd_gen_bam}')
             status4 = self.cmd_shell(cmd_gen_bam)
-            cmd_index_bam = f'samtools index -@ 8 {self.bam_sorted_ps} {self.bam_index_ps}'
+            cmd_index_bam = f'samtools index -@ {self.bowtie_pars["-p"]} {self.bam_sorted_ps} {self.bam_index_ps}'
             print(f'[{self.sample_name}] -> Generating .bai: {cmd_index_bam}')
             status5 = self.cmd_shell(cmd_index_bam)
 
@@ -160,8 +291,9 @@ class RNASeqAnalyzer:
         """
         if cwd is None:
             cwd = os.getcwd()
-        stat = sbps.Popen(cmd, shell=True, stdout=sbps.PIPE, cwd=cwd)
-        self.append_to_log(stat.stdout.read())
+        stat = sbps.Popen(cmd, shell=True, stdout=sbps.PIPE, stderr=sbps.PIPE, cwd=cwd)
+        self.append_to_log(stat.stdout.read())  # write log
+        self.append_to_log(stat.stderr.read())  # write log
         return stat
 
 

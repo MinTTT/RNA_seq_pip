@@ -26,6 +26,49 @@ from scipy.ndimage import convolve1d
 from scipy.stats import binned_statistic
 
 # […]
+def find_fq(dir_name, suffix=None):
+    """
+    find fastq file in the directory
+    Parameters
+    ----------
+    dir_name: str
+        directory name
+    suffix: list
+        suffix of the fastq file
+    Returns
+    -------
+    dict
+        dict of the fastq file
+
+    """
+    if suffix is None:
+        suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
+    files = [file.name for file in os.scandir(dir_name) if file.is_file()]
+    redas_files = []
+    for sufix in suffix:
+        redas_files += [file for file in files if file[-len(sufix):] == sufix]
+    samples = list(set([file.split('.')[0] for file in redas_files]))
+    samples_dict = {}
+    for sample in samples:
+        files_of_sample = [seqfile for seqfile in redas_files
+                           if seqfile.split('.')[0] == sample]
+        sample_dic = {}
+        if len(files_of_sample) == 1:
+            sample_dic['R1'] = os.path.join(dir_name, files_of_sample[0])
+            sample_dic['R2'] = None
+            sample_dic['paired'] = False
+        elif len(files_of_sample) == 2:
+            if '1' in files_of_sample[0].strip('sample'):
+                sample_dic['R1'] = os.path.join(dir_name, files_of_sample[0])
+                sample_dic['R2'] = os.path.join(dir_name, files_of_sample[1])
+            else:
+                sample_dic['R1'] = os.path.join(dir_name, files_of_sample[1])
+                sample_dic['R2'] = os.path.join(dir_name, files_of_sample[0])
+
+            sample_dic['paired'] = True
+        samples_dict[sample] = sample_dic
+
+    return samples_dict
 
 
 class GeneFeature:
@@ -358,6 +401,8 @@ class BAMile:
         ----------
         clean_rtRNA
 
+        fwd_seq: 64 + 32 + 2 + 1
+        rev_seq:
         Returns
         -------
 
@@ -370,7 +415,7 @@ class BAMile:
                           f" samtools view -f 147 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_2.bam'} ; " \
                           f"samtools merge -@ {self.threads} {self.reads_forward_strand_ps} " \
                           f"{self.bam_ps + '.fwd_1.bam'} {self.bam_ps + '.fwd_2.bam'}; " \
-                          f"rm {self.bam_ps + '.fwd_1.bam'}; rm {self.bam_ps + '.fwd_2.bam'}"
+                          f"rm {self.bam_ps + '.fwd_1.bam'}; rm {self.bam_ps + '.fwd_2.bam'}; samtools index {self.reads_forward_strand_ps}"
             else:
                 cmd_sep = f"samtools view -F 1044 -@ {self.threads} {self.bam_ps} -o {self.reads_forward_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
@@ -382,7 +427,7 @@ class BAMile:
                           f" samtools view -f 163 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_2.bam'} ; " \
                           f"samtools merge -@ {self.threads} {self.reads_reverse_strand_ps} " \
                           f"{self.bam_ps + '.rev_1.bam'} {self.bam_ps + '.rev_2.bam'}; " \
-                          f"rm {self.bam_ps + '.rev_1.bam'}; rm {self.bam_ps + '.rev_2.bam'}"
+                          f"rm {self.bam_ps + '.rev_1.bam'}; rm {self.bam_ps + '.rev_2.bam'}; samtools index {self.reads_reverse_strand_ps}"
             else:
                 cmd_sep = f"samtools view -f 16 -F 1028 -@ {self.threads} {self.bam_ps} -o {self.reads_reverse_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
@@ -437,6 +482,15 @@ class BAMile:
             self.forward_coverage_data[genome] = self.forward_coverage_data[genome] / \
                                                  (self.coverage_all / 1e9)
         return None
+
+    def calculate_depth(self):
+        """ This method calculate the depth of the reads in the genome. It treats bam file, which is
+            different to count_coverage method whose input bam file will be seperated to 2 files at first.
+
+        """
+        cmd_string = f'samtools depth -a {self.bam_ps} > {self.bam_ps}.depth.tsv'
+        status = sbps.run(cmd_string, shell=True, cwd=os.getcwd())
+        print(f"[{os.path.basename(self.bam_ps)}] -> Calculate alignment depth: {cmd_string}")
 
     def fetch_coverage(self, chromosome, start=None, end=None, strand=None, move_average: int = None) -> np.ndarray:
         """
@@ -592,8 +646,22 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
                 except AttributeError:
                     print(cds)
                     raise SystemError("Please check annotation file!")
+        try:
+            gene_product = cds.product
+        except AttributeError:
+            gene_product = None
+        try:
+            db_ref = cds.db_xref
+            db_ref_list = db_ref.split(',')
+            ecocyc = None
+            for ref in db_ref_list:
+                ref_lt = ref.split(':')
+                if ref_lt[0] == 'ECOCYC':
+                    ecocyc = ref_lt[1]
+        except AttributeError:
+            ecocyc = None
 
-        info = [gene_name, cds.locus_tag, cds.product, cds.length, cds.strand,
+        info = [gene_name, cds.locus_tag, gene_product, ecocyc,cds.length, cds.strand,
                 bamflie.count_cds_reads(cds.genome, cds.start, cds.end, cds.strand)]
         reads_stat.append(info)
     print(f"[{os.path.basename(bam_ps)}] -> Counting coverage")
@@ -601,7 +669,7 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
         delayed(sum_of_coverage)(cds, bamflie) for cds in tqdm(cds_list))
 
     data_frame = pd.DataFrame(data=reads_stat,
-                              columns=['gene', 'locus_tag', 'product', 'length', 'strand', 'counts'])
+                              columns=['gene', 'locus_tag', 'product', 'ECOCYC', 'length', 'strand', 'counts'])
     data_frame['coverage'] = np.array(coverage)
     all_counts = bamflie.cleaned_reads
     data_frame['RPKM'] = data_frame['counts'] * (1000 / data_frame['length']) * (1e6 / all_counts)

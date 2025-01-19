@@ -1,0 +1,84 @@
+LOCUS       Exported                1918 bp ds-DNA     linear   UNA 04-JAN-2025
+DEFINITION  linear DNA
+ACCESSION   xcd001.ptrc-mVenusNB
+VERSION     xcd001.ptrc-mVenusNB.1
+KEYWORDS    .
+SOURCE      natural DNA sequence
+  ORGANISM  unspecified
+REFERENCE   1  (bases 1 to 1918)
+  AUTHORS   .
+  TITLE     Direct Submission
+  JOURNAL   Exported Saturday, Jan 4, 2025 from SnapGene 4.3.6
+            https://www.snapgene.com
+FEATURES             Location/Qualifiers
+     source          1..1918
+                     /organism="Escherichia species"
+                     /strain="strain"
+                     /mol_type="genomic DNA"
+     terminator      16..87
+                     /label=B0053 terminator
+                     /label=B0053
+     terminator      135..164
+                     /label=T3Te terminator
+                     /note="phage T3 early transcription terminator"
+     terminator      233..289
+                     /label=L3S2P22 terminator
+                     /label=L3S2P22
+     promoter        349..378
+                     /label=trc promoter
+                     /note="strong E. coli promoter; hybrid between the trp and 
+                     lac UV5 promoters"
+     CDS             545..1264
+                     /codon_start=1
+                     /product="mVenus NB, yellow fluorescence protein"
+                     /label=mVenus_NB
+                     /translation="MVSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTL
+                     KLICTTGKLPVPWPTLVTTLGYGVQCFARYPDHMKQHDFFKSAMPEGYVQERTIFFKDD
+                     GNYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNYNSHNVYITADKQKNGIK
+                     ANFKIRHNIEDGGVQLADHYQQNTPIGDGPVLLPDNHYLSYQSKLSKDPNEKRDHMVLL
+                     EFVTAAGITLGMDELYK"
+     terminator      1471..1518
+                     /label=T7 terminator
+                     /note="transcription terminator for bacteriophage T7 RNA 
+                     polymerase"
+     terminator      1639..1670
+                     /label=tonB terminator
+                     /note="bidirectional E. coli tonB-P14 transcription 
+                     terminator"
+     terminator      1795..1889
+                     /label=lambda t0 terminator
+                     /note="transcription terminator from phage lambda"
+ORIGIN
+        1 cgtaataata ctagctccgg caaaaaaacg ggcaaggtgt caccaccctg ccctttttct
+       61 ttaaaaccga aaagattact tcgcgtttgc cacctgacgt ctaagaaaag gaatattcag
+      121 caatttgccc gtgccgaaga aaggcccacc cgtgaaggtg agccagtgag ttgattgcta
+      181 cgtaattagt tagttagccc ttagtgactc gaattcgcgg ccgcttctag agctcggtac
+      241 caaattccag aaaagaggcc gcgaaagcgg ccttttttcg ttttggtcct actagatgcc
+      301 tccacaccgc tcgtcacatc ctgcccgttc catggctgaa atgagctgtt gacaattaat
+      361 catccggctc gtataatgtg tggaattgtg agcggataac aatttcacac gtcgaccgcc
+      421 ttcggcgaag ctccacacga gagcaagaag ctgtcaccgg atgtgctttc cggtctgatg
+      481 agtccgtgag gacgaaacag cctctacaaa taattttgtt taatgtctaa tggcggtttt
+      541 ctaaatggtt tctaaaggtg aagaactgtt caccggtgtt gttccgatcc tggttgaact
+      601 ggacggtgac gttaacggtc acaaattctc tgtttctggt gaaggtgaag gtgacgctac
+      661 ctacggtaaa ctgaccctga aactgatctg caccaccggt aaactgccgg ttccgtggcc
+      721 gaccctggtt accaccctgg gttacggtgt tcagtgcttc gctcgttacc cggaccacat
+      781 gaaacagcac gacttcttca aatctgctat gccggaaggt tacgttcagg aacgtaccat
+      841 cttcttcaaa gacgacggta actacaaaac ccgtgctgaa gttaaattcg aaggtgacac
+      901 cctggttaac cgtatcgaac tgaaaggtat cgacttcaaa gaagacggta acatcctggg
+      961 tcacaaactg gaatacaact acaactctca caacgtttac atcaccgctg acaaacagaa
+     1021 aaacggtatc aaagctaact tcaaaatccg tcacaacatc gaagacggtg gtgttcagct
+     1081 ggctgaccac taccagcaga acaccccgat cggtgacggt ccggttctgc tgccggacaa
+     1141 ccactacctg tcttaccagt ctaaactgtc taaagacccg aacgaaaaac gtgaccacat
+     1201 ggttctgctg gaattcgtta ccgctgctgg tatcaccctg ggtatggacg aactgtacaa
+     1261 ataatgatga tgataagcca ggcatcaaat aaaacgaaag gctcagtcga aagactgggc
+     1321 ctttcgtttt atctgttgtt tgtcggtgaa cgctctctac tagagtcaca ctggctcacc
+     1381 ttcgggtggg cctttctgcg tttatatact agagctgcta acaaagcccg aaaggaagct
+     1441 gagttggctg ctgccaccgc tgagcaataa ctagcataac cccttggggc ctctaaacgg
+     1501 gtcttgaggg gttttttgct gaaaggagga actatatccg gattactaga ggtcatgctt
+     1561 gccatctgtt ttcttgcaag attactagta gcggccgctg caggagtcac taagggttag
+     1621 ttagttagat tagcagaaag tcaaaagcct ccgaccggag gcttttgact aaaacttccc
+     1681 ttggggttat cattggggct cactcaaagg cggtaatcag ataaaaaaaa tccttagctt
+     1741 tcgctaagga tgatttctgc tagagctgtc agaccaagtt tacgagctcg cttggactcc
+     1801 tgttgataga tccagtaatg acctcagaac tccatctgga tttgttcaga acgctcggtt
+     1861 gccgccgggc gttttttatt ggtgagaatc caagcactag ggacagtaag acgggtaa
+//

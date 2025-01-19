@@ -98,15 +98,6 @@ def deep_seq_pip(sample_name, ref_ps, reads, ori_site, ter_site, bin_length, exp
         relative_pos = np.array([base_position2relative_pos(index, genome_length, ori_site, ter_site)[0]
                         for index in genome_index])
 
-        # zero_index = round(len(coverage_binned_mean) / 2)
-        # coverage_binned_mean = np.roll(coverage_binned_mean, round(zero_index))
-        #
-        # left_pos = np.linspace(-1, 0, num=zero_index, endpoint=False)
-        # right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zero_index), endpoint=True)
-        # relative_pos = np.concatenate([left_pos, right_pos])
-
-        # genome_index = np.arange(1, genome_length)
-        # genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
         inf_filter = coverage_binned_mean > 0
         log2_coverage = np.zeros(len(coverage_binned_mean))
         log2_coverage[inf_filter] = np.log2(coverage_binned_mean[inf_filter])
