@@ -17,10 +17,11 @@ import numpy as np  # Or any other
 # […]
 import subprocess as sbps
 import json
+
 # Own modules
 
 
-
+#%%
 
 data_fold = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/2022_20_RNA_seq/PE'
 target_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/2022_20_RNA_seq/PE_data_rename'
@@ -36,7 +37,7 @@ if not os.path.exists(target_dir):
         
 """
 sample_folders = [os.path.join(data_fold, fold) for fold in os.listdir(data_fold)
-               if os.path.isdir(os.path.join(data_fold, fold))]
+                  if os.path.isdir(os.path.join(data_fold, fold))]
 
 origin_name_new_name = {}
 for folder in sample_folders:
@@ -57,3 +58,4 @@ for folder in sample_folders:
 with open(os.path.join(target_dir, 'origin_name_new_name.json'), 'w') as file:
     json.dump(origin_name_new_name, file)
 
+#%%
