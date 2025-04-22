@@ -5,7 +5,7 @@
  @author: Pan M. CHU
  @Email: pan_chu@outlook.com
 """
-
+#%%
 # Built-in/Generic Imports
 import os
 import sys
@@ -24,49 +24,70 @@ import subprocess as sbps
 from functools import partial
 from scipy.ndimage import convolve1d
 from scipy.stats import binned_statistic
+import re
 
-# […]
+
 def find_fq(dir_name, suffix=None):
     """
-    find fastq file in the directory
+    Find the fastq files in the folder.
+
     Parameters
-    ----------
+    ---------
     dir_name: str
-        directory name
-    suffix: list
-        suffix of the fastq file
+        The folder name.
+    suffix: list or a string
+        The suffix of the fastq files. default is ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
+
     Returns
-    -------
+    -------------
     dict
-        dict of the fastq file
+        The fastq files in the folder. The key is the sample name, the value is a dict with keys 'R1', 'R2', and 'paired'.
+        If the sample is single-end, 'R2' is None, and 'paired' is False.
 
     """
     if suffix is None:
         suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
-    files = [file.name for file in os.scandir(dir_name) if file.is_file()]
-    redas_files = []
-    for sufix in suffix:
-        redas_files += [file for file in files if file[-len(sufix):] == sufix]
-    samples = list(set([file.split('.')[0] for file in redas_files]))
+    if isinstance(suffix, str):
+        suffix = [suffix]
+    files = [file.name for file in os.scandir(dir_name)
+             if file.is_file()]
+    reads_files = []
+    # files form different sequencing company may have different naming rules, so I need to check the file name
+    # some use _ to identify the paired files, some use ., use regular expression to find the paired files
+    # file names compose sample_name, paired number, and suffix
+    # paired number can be: .1/.2; R1/R2; _1/_2; _R1/_R2; _1_/_2_; _R1_/_R2_; 1/2; R1/R2;
+    for suf in suffix:
+        reads_files += [file for file in files if file[-len(suf):] == suf]
+    # check the file name
     samples_dict = {}
-    for sample in samples:
-        files_of_sample = [seqfile for seqfile in redas_files
-                           if seqfile.split('.')[0] == sample]
-        sample_dic = {}
-        if len(files_of_sample) == 1:
-            sample_dic['R1'] = os.path.join(dir_name, files_of_sample[0])
-            sample_dic['R2'] = None
-            sample_dic['paired'] = False
-        elif len(files_of_sample) == 2:
-            if '1' in files_of_sample[0].strip('sample'):
-                sample_dic['R1'] = os.path.join(dir_name, files_of_sample[0])
-                sample_dic['R2'] = os.path.join(dir_name, files_of_sample[1])
+    for file in reads_files:
+        # check the file name
+        match = re.match(r'(.+)([._][Rr][12])(\..+)?$', file)
+        if match:
+            sample_name, paired_num, suffix = match.groups()
+            if sample_name not in samples_dict:
+                samples_dict[sample_name] = {}
+                samples_dict[sample_name][paired_num] = (sample_name, paired_num, suffix)
             else:
-                sample_dic['R1'] = os.path.join(dir_name, files_of_sample[1])
-                sample_dic['R2'] = os.path.join(dir_name, files_of_sample[0])
+                samples_dict[sample_name][paired_num] = (sample_name, paired_num, suffix)
+    # check the paired number
+    for sample_name, paired_files in samples_dict.items():
+        if len(paired_files) == 1:
+            file_name = list(paired_files.values())[0]
+            samples_dict[sample_name]['R1'] = os.path.join(dir_name, ''.join(file_name))
+            samples_dict[sample_name]['R2'] = None
+            samples_dict[sample_name]['paired'] = False
+        elif len(paired_files) == 2:
+            # whatever the samples file how to name their sequence files, I identify the file type by the number
+            file_keys = list(paired_files.keys())
+            if '1' in file_keys[0]:
+                samples_dict[sample_name]['R1'] = os.path.join(dir_name, ''.join(paired_files[file_keys[0]]))
+                samples_dict[sample_name]['R2'] = os.path.join(dir_name, ''.join(paired_files[file_keys[1]]))
+            else:
+                samples_dict[sample_name]['R1'] = os.path.join(dir_name, ''.join(paired_files[file_keys[1]]))
+                samples_dict[sample_name]['R2'] = os.path.join(dir_name, ''.join(paired_files[file_keys[0]]))
 
-            sample_dic['paired'] = True
-        samples_dict[sample] = sample_dic
+            samples_dict[sample_name]['paired'] = True
 
     return samples_dict
 
@@ -109,8 +130,24 @@ def gff_parser(gff_ps: str) -> dict:
                 pass
             else:
                 tokens = line.split('\t')
+                '''
+                GFF file is a table with each line representing a feature. The columns are:
+                1. seqname - name of the chromosome or scaffold; chromosome names can be given with or without the 'chr' prefix. 
+                    Important note: the seqname must be one used within Ensembl, i.e. a standard chromosome name or an Ensembl 
+                    identifier such as a scaffold ID, without any additional content such as species or assembly. 
+                2. source - name of the program that generated this feature, or the data source (database or project name)
+                3. feature - feature type name, e.g. Gene, Variation, Similarity
+                4. start - Start position* of the feature, with sequence numbering starting at 1.
+                5. end - End position* of the feature, with sequence numbering starting at 1.
+                6. score - A floating point value.
+                7. strand - defined as + (forward) or - (reverse).
+                8. frame - One of '0', '1' or '2'. '0' indicates that the first base of the feature is the first base of a codon, 
+                    '1' that the second base is the first base of a codon, and so on..
+                9. attribute - A semicolon-separated list of tag-value pairs, providing additional information about each feature.
+
+                '''
                 genome, feature, start, end, strand, annotate = tokens[0], tokens[2], int(tokens[3]), int(tokens[4]), \
-                                                                tokens[6], tokens[-1]
+                    tokens[6], tokens[-1]
                 gene_features.append(GeneFeature(feature, genome, start, end, strand, annotate))
 
     feature_set = list(set([gene.feature for gene in gene_features]))
@@ -281,19 +318,24 @@ class BAMile:
 
     def check_path(self):
         """
-        check that whether the files for processing mapped reads is in file.
-        :return:
+
+        Returns
+        -------
+
         """
         self.fmt_print('Checking process files.')
         self.files = os.listdir(self.dir)
         if self.bam_name is not None:
             if self.bam_name + '.fwd_strand.bam' in self.files:
+
                 self.fmt_print('Detected forward strand mapped sam file')
                 self.reads_forward_strand_ps = self.bam_ps + '.fwd_strand.bam'
             if self.bam_name + '.rvs_strand.bam' in self.files:
+
                 self.fmt_print('Detected reverse strand mapped sam file')
                 self.reads_reverse_strand_ps = self.bam_ps + '.rvs_strand.bam'
             if self.bam_name + '.fwd_depth.tsv' in self.files:
+
                 self.fmt_print('Loading forward strand coverage.')
                 self.forward_coverage_ps = self.bam_ps + '.fwd_depth.tsv'
                 fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
@@ -303,6 +345,7 @@ class BAMile:
                 for genome in self.fwd_genome_set:
                     self.forward_coverage_data[genome] = fwd_tsv[fwd_tsv['genome'] == genome]['coverage'].values
             if self.bam_name + '.rev_depth.tsv' in self.files:
+
                 self.fmt_print('Loading reverse strand coverage.')
                 self.reverse_coverage_ps = self.bam_ps + '.rev_depth.tsv'
                 rev_tsv = pd.read_csv(self.reverse_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
@@ -361,6 +404,7 @@ class BAMile:
         self.cleaned_reads = self.mapped_reads - rRNA_reads - tRNA_reads
 
     def fmt_print(self, msg):
+
         print(f'[{self.bam_name}] -> {msg}')
 
     def count_cds_reads(self, genome, start, end, strand=None):
@@ -373,12 +417,15 @@ class BAMile:
         :return: int
         """
         if strand == '+':
+
             return self.bam.count(contig=genome, start=start - 1, end=end,
                                   read_callback=partial(check_reverse, paired=self.paired_flag))
         elif strand == '-':
+
             return self.bam.count(contig=genome, start=start - 1, end=end,
                                   read_callback=partial(check_forward, paired=self.paired_flag))
         else:
+
             return self.bam.count(contig=genome, start=start - 1, end=end)
 
     def separate_bam_by_strand(self, clean_rtRNA=True):
@@ -387,12 +434,12 @@ class BAMile:
         Integer	Binary	Description (Paired Read Interpretation)
         1	000000000001	template having multiple templates in sequencing (read is paired)
         2	000000000010	each segment properly aligned according to the aligner (read mapped in proper pair)
-        4	000000000100	segment unmapped (read1 unmapped)
-        8	000000001000	next segment in the template unmapped (read2 unmapped)
-        16	000000010000	SEQ being reverse complemented (read1 reverse complemented)
-        32	000000100000	SEQ of the next segment in the template being reverse complemented (read2 reverse complemented)
-        64	000001000000	the first segment in the template (is read1)
-        128	000010000000	the last segment in the template (is read2)
+        4	000000000100	segment unmapped (current unmapped)
+        8	000000001000	next segment in the template unmapped (mate unmapped)
+        16	000000010000	SEQ being reverse complemented (current seq reverse complemented)
+        32	000000100000	SEQ of the next segment in the template being reverse complemented (mate reverse complemented)
+        64	000001000000	First in pair
+        128	000010000000	Second in pair
         256	000100000000	not primary alignment
         512	001000000000	alignment fails quality checks
         1024	010000000000	PCR or optical duplicate
@@ -400,22 +447,24 @@ class BAMile:
         Parameters
         ----------
         clean_rtRNA
-
-        fwd_seq: 64 + 32 + 2 + 1
+        fwd_seq:
         rev_seq:
         Returns
         -------
 
         """
-
         if (self.reads_forward_strand_ps is None) or (self.reads_reverse_strand_ps is None):
             self.reads_forward_strand_ps = self.bam_ps + '.fwd_strand.bam'
             if self.paired_flag:
+                # Find the reads mapped to forward sequence:
+                # 64 + 32 + 2 + 1 = 99 -> is read1 & read2 reverse complemented
+                # 128 + 16 + 2 + 1 = 147 -> is read2 & read2 reverse complemented
                 cmd_sep = f"samtools view -f 99 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_1.bam'} ;" \
                           f" samtools view -f 147 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.fwd_2.bam'} ; " \
                           f"samtools merge -@ {self.threads} {self.reads_forward_strand_ps} " \
                           f"{self.bam_ps + '.fwd_1.bam'} {self.bam_ps + '.fwd_2.bam'}; " \
-                          f"rm {self.bam_ps + '.fwd_1.bam'}; rm {self.bam_ps + '.fwd_2.bam'}; samtools index {self.reads_forward_strand_ps}"
+                          f"rm {self.bam_ps + '.fwd_1.bam'}; rm {self.bam_ps + '.fwd_2.bam'}; " \
+                          f"samtools index {self.reads_forward_strand_ps}"
             else:
                 cmd_sep = f"samtools view -F 1044 -@ {self.threads} {self.bam_ps} -o {self.reads_forward_strand_ps}"
             self.fmt_print(f'Separate bam file: {cmd_sep}.')
@@ -423,8 +472,11 @@ class BAMile:
 
             self.reads_reverse_strand_ps = self.bam_ps + '.rvs_strand.bam'
             if self.paired_flag:
-                cmd_sep = f"samtools view -f 83 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_1.bam'} ;" \
-                          f" samtools view -f 163 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_2.bam'} ; " \
+                # Find the reads mapped to reverse sequence:
+                # 64 + 16 + 2 + 1 = 83 -> is read1 & read1 reverse complemented
+                # 128 + 32 + 2 + 1 = 163 -> is read2 & read1 reverse complemented
+                cmd_sep = f"samtools view -f 83 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_1.bam'} ; " \
+                          f"samtools view -f 163 -@ {self.threads} {self.bam_ps} -o {self.bam_ps + '.rev_2.bam'} ; " \
                           f"samtools merge -@ {self.threads} {self.reads_reverse_strand_ps} " \
                           f"{self.bam_ps + '.rev_1.bam'} {self.bam_ps + '.rev_2.bam'}; " \
                           f"rm {self.bam_ps + '.rev_1.bam'}; rm {self.bam_ps + '.rev_2.bam'}; samtools index {self.reads_reverse_strand_ps}"
@@ -439,6 +491,14 @@ class BAMile:
         return None
 
     def count_coverage(self):
+        """
+        Count the coverage of reads in the BAM file for both forward and reverse strands.
+        This method calculates the coverage for each genome and normalizes it to reads per kilobase per million (RPKM).
+
+        Returns
+        -------
+        None
+        """
         if self.forward_coverage_ps is None:
             self.forward_coverage_ps = self.bam_ps + '.fwd_depth.tsv'
             if self.rtRNA_clean_flag:
@@ -452,7 +512,7 @@ class BAMile:
             fwd_tsv = pd.read_csv(self.forward_coverage_ps, sep='\t', names=['genome', 'location', 'coverage'])
             fwd_tsv['genome'] = fwd_tsv['genome'].astype(str)
             self.fwd_genome_set = list(set(fwd_tsv['genome'].tolist()))
-            # self.forward_coverage_data = {genome: fwd_tsv[fwd_tsv['genome'] == genome] for genome in genome_set}
+
             for genome in self.fwd_genome_set:
                 self.forward_coverage_data[genome] = fwd_tsv[fwd_tsv['genome'] == genome]['coverage'].values
 
@@ -492,12 +552,14 @@ class BAMile:
         status = sbps.run(cmd_string, shell=True, cwd=os.getcwd())
         print(f"[{os.path.basename(self.bam_ps)}] -> Calculate alignment depth: {cmd_string}")
 
-    def fetch_coverage(self, chromosome, start=None, end=None, strand=None, move_average: int = None) -> np.ndarray:
+    def fetch_coverage(self, chromosome, start=None, end=None, strand=None, move_average: int = None,
+                       stranded='reverse') -> np.ndarray:
         """
         fetch coverage from coverage data, execute count_coverage before this method.
 
         Parameters
         -------------------
+        stranded : count the coverage in which strand, default is reverse.
         chromosome: str
             the name of chromosome.
         start: int
@@ -523,9 +585,15 @@ class BAMile:
             length = end - start + 1
 
         if strand == '+':
-            genome_coverage = self.reverse_coverage_data[chromosome]  # type: np.ndarray
+            if stranded == 'reverse':
+                genome_coverage = self.reverse_coverage_data[chromosome]  # type: np.ndarray
+            else:
+                genome_coverage = self.forward_coverage_data[chromosome]
         elif strand == '-':
-            genome_coverage = self.forward_coverage_data[chromosome]  # type: np.ndarray
+            if stranded == 'reverse':
+                genome_coverage = self.forward_coverage_data[chromosome]  # type: np.ndarray
+            else:
+                genome_coverage = self.reverse_coverage_data[chromosome]
         else:
             genome_coverage = self.reverse_coverage_data[chromosome] + \
                               self.forward_coverage_data[chromosome]
@@ -538,6 +606,7 @@ class BAMile:
             return avg_coverage
 
     def plot_coverage(self, genome, start, end, strand=None, window=10, ax: plt.axes = None, **kwargs):
+
         """
         Plot the coverage
 
@@ -562,16 +631,14 @@ class BAMile:
 
         """
 
-
         feature_x = np.arange(start, end + 1, step=1)
 
         def binn_reads(x: np.array, coverage, window):
-            binned_coverage = binned_statistic(x, coverage, 'mean', bins=int(len(x)/window))
+            binned_coverage = binned_statistic(x, coverage, 'mean', bins=int(len(x) / window))
             coverage_binned_mean = binned_coverage.statistic
             base_edges = binned_coverage.bin_edges
-            base_x = np.array([np.mean([base_edges[i], base_edges[i+1]]) for i in range(len(base_edges)-1)])
+            base_x = np.array([np.mean([base_edges[i], base_edges[i + 1]]) for i in range(len(base_edges) - 1)])
             return base_x, base_edges, coverage_binned_mean
-
 
         if strand is not None:
             coverage = self.fetch_coverage(genome, start, end, strand, move_average=window)
@@ -583,7 +650,8 @@ class BAMile:
             coverage_antisense = self.fetch_coverage(genome, start, end, strand='-', move_average=window)
 
             base_x, base_deges, coverage_binned_mean_sense = binn_reads(feature_x, coverage_sense, window=window)
-            base_x, base_deges, coverage_binned_mean_amtisense = binn_reads(feature_x, coverage_antisense, window=window)
+            base_x, base_deges, coverage_binned_mean_amtisense = binn_reads(feature_x, coverage_antisense,
+                                                                            window=window)
 
             rets = np.hstack(
                 [base_x.reshape(-1, 1), coverage_binned_mean_sense.reshape(-1, 1),
@@ -599,13 +667,13 @@ class BAMile:
             if strand == '+':
                 # ax.bar(base_x, coverage_binned_mean, width=window, **kwargs)
                 # ax.hlines(coverage_binned_mean, base_deges[:-1], base_deges[1:], **kwargs)
-                ax.plot(feature_x,  coverage, color='k')
+                ax.plot(feature_x, coverage, color='k')
                 ax.fill_between(feature_x, 0, coverage, color='#F89388')
             if strand == '-':
                 # ax.bar(base_x, -coverage_binned_mean, width=window, **kwargs)
                 # ax.plot(base_x,  -coverage_binned_mean, color='k')
                 # ax.hlines(-coverage_binned_mean, base_deges[:-1], base_deges[1:], **kwargs)
-                ax.plot(feature_x,  -coverage, color='k')
+                ax.plot(feature_x, -coverage, color='k')
                 ax.fill_between(feature_x, 0, -coverage, color='#88F8CB')
             return rets
         else:
@@ -622,12 +690,13 @@ class BAMile:
             return rets
 
 
-def sum_of_coverage(cds: GeneFeature, bam: BAMile):
-    return np.sum(bam.fetch_coverage(cds.genome, cds.start, cds.end, cds.strand))
+def sum_of_coverage(cds: GeneFeature, bam: BAMile, stranded='reverse'):
+
+    return np.sum(bam.fetch_coverage(cds.genome, cds.start, cds.end, cds.strand, stranded=stranded))
 
 
 def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS',
-                       paired_flag: bool = True) -> Tuple[pd.DataFrame, BAMile]:
+                       paired_flag: bool = True, stranded='reverse') -> Tuple[pd.DataFrame, BAMile]:
     bamflie = BAMile(bam_ps, gff_ps, fasta_ps, paired_flag=paired_flag)
     cds_list = bamflie.gene_features[feature]
     bamflie.separate_bam_by_strand()  # separate the sam file according to the strands
@@ -661,12 +730,12 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
         except AttributeError:
             ecocyc = None
 
-        info = [gene_name, cds.locus_tag, gene_product, ecocyc,cds.length, cds.strand,
+        info = [gene_name, cds.locus_tag, gene_product, ecocyc, cds.length, cds.strand,
                 bamflie.count_cds_reads(cds.genome, cds.start, cds.end, cds.strand)]
         reads_stat.append(info)
     print(f"[{os.path.basename(bam_ps)}] -> Counting coverage")
     coverage = Parallel(n_jobs=-1, require='sharedmem')(
-        delayed(sum_of_coverage)(cds, bamflie) for cds in tqdm(cds_list))
+        delayed(sum_of_coverage)(cds, bamflie, stranded) for cds in tqdm(cds_list))
 
     data_frame = pd.DataFrame(data=reads_stat,
                               columns=['gene', 'locus_tag', 'product', 'ECOCYC', 'length', 'strand', 'counts'])
@@ -682,7 +751,8 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
     return data_frame, bamflie
 
 
-def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', stranded: str = 'reverse'):
+def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', stranded: str = 'reverse',
+                      log_writer=None):
     """
 
     Parameters
@@ -704,12 +774,32 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
 
     id = 'locus_tag'
     export_name = os.path.join(os.path.split(bam_ps[0])[0], 'htseq.cds_counts.tsv')
-    if 'htseq.cds_counts.tsv' not in os.listdir(os.path.split(bam_ps[0])[0]):
-        cmd_htseq = f"htseq-count -f bam -s {stranded} -r pos -t {feature} -i {id} -m union " \
+    # check the result file
+    no_file_flag = export_name not in os.listdir(os.path.split(bam_ps[0])[0])
+    if no_file_flag is False:
+        # check the files size
+        file_size = os.path.getsize(export_name)
+        if file_size <= 1:
+            no_file_flag = True
+            # remove the expoert file
+            print(f'Remove old file :{export_name}, File size: {file_size} bytes.')
+            os.remove(export_name)
+
+    if no_file_flag:
+        cmd_htseq = f"htseq-count -f bam -s {stranded} -r pos --max-reads-in-buffer=120000000 -t {feature} -i {id} -m union " \
                     f"--nonunique fraction -a 10 -n 32 -q {' '.join(bam_ps)} {gff_ps}" \
                     + f" > {export_name}"  # the prefix was used for init env.
+        if log_writer:
+            log_writer(cmd_htseq)
         print(cmd_htseq)
-        status = sbps.run(cmd_htseq, shell=True, cwd=os.getcwd())
+        # status = sbps.run(cmd_htseq, shell=True, cwd=os.getcwd())
+        status = sbps.Popen(cmd_htseq, shell=True,  stdout=sbps.PIPE, stderr=sbps.PIPE, cwd=os.getcwd())
+        std_out = status.stdout.read()
+        std_err_log = status.stderr.read()
+        if log_writer:
+            log_writer(std_out)
+            log_writer(std_err_log)
+
     columns_title = [id]
     for i in range(len(bam_ps)):
         columns_title.append(f'htseq_counts_{i}')
@@ -725,24 +815,34 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     reads_info_tsv = count_tsv.loc[reverse_cds_mask]
     # print(cds_tsv)
     # print(reads_info_tsv)
-    all_reads = np.sum(cds_tsv['htseq_counts']) + reads_info_tsv[reads_info_tsv[id] == '__no_feature'][
-        'htseq_counts'].values \
-                + reads_info_tsv[reads_info_tsv[id] == '__ambiguous']['htseq_counts'].values
+    all_reads = (np.sum(cds_tsv['htseq_counts']) + reads_info_tsv[reads_info_tsv[id] == '__no_feature'][
+        'htseq_counts'].values
+                 + reads_info_tsv[reads_info_tsv[id] == '__ambiguous']['htseq_counts'].values)
+
     return cds_tsv, all_reads
 
 
 def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True,
-                        stranded: str = 'forward') -> Tuple[pd.DataFrame, BAMile]:
-    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps, feature, paired_flag=paired_flag)
+                        stranded: str = 'reverse', cleaned=False, log_writer=None) -> Tuple[pd.DataFrame, BAMile]:
+    # count the reads in the bam file. Methd: coverage based
+    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps,
+                                                feature, paired_flag=paired_flag)
     bamflie.fmt_print('HTseq counting.')
-    htseq_counts, all_reads = count_reads_htseq([bamflie.cleaned_reads_reverse_strand_ps,
-                                                 bamflie.cleaned_reads_forward_strand_ps],
-                                                gff_ps, feature, stranded)
+    # count the reads in the bam file. Methd: htseq-count
+    if cleaned:
+        bam_ps_htseq = [bamflie.cleaned_reads_reverse_strand_ps,
+                        bamflie.cleaned_reads_forward_strand_ps]
+    else:
+        bam_ps_htseq = [bam_ps]
+
+    htseq_counts, all_reads = count_reads_htseq(bam_ps_htseq, gff_ps, feature,
+                                                stranded, log_writer=log_writer)
+
     data_frame = pd.merge(custom_counts, htseq_counts, on='locus_tag', how='left')
     data_frame['htseq_FPKM'] = data_frame['htseq_counts'] * (1000 / data_frame['length']) * (
             1e6 / all_reads)
     data_frame['htseq_TPM'] = data_frame['htseq_FPKM'] * 1e6 / data_frame['htseq_FPKM'].sum()
-    # data_frame.to_csv(bam_ps + '.combined.cds_counts.csv')
+
     return data_frame, bamflie
 
 
@@ -766,7 +866,6 @@ def base_position2relative_pos(pos, genome_length, ori=1, ter=None) -> Tuple[flo
     the relative position in genome and angle in a circle for denoting the base position
 
     """
-
     half_genome = genome_length / 2.
     if ter is None:
         if half_genome > ori:
@@ -793,81 +892,11 @@ def base_position2relative_pos(pos, genome_length, ori=1, ter=None) -> Tuple[flo
     return relative_pos, phi_pos
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # %%
 if __name__ == '__main__':
     # %%
-    bam_ps = r'./A1_andong_output/A1_andong.sorted.bam'
-    gff_ps = r'./example_data/annotation_file/GCA_000005845.2_ASM584v2_genomic.gff'
-    bams_ps = [r"./A1_andong_output/A1_andong.sorted.bam.fwd_strand.bam.cleaned.bam",
-               r"./A1_andong_output/A1_andong.sorted.bam.rvs_strand.bam.cleaned.bam"]
-    data, all_counts = count_feature_reads(bam_ps, gff_ps)
-    # print(all_counts)
-    data.to_csv(bam_ps + 'htseq.stats.csv')
+    fa_path = r'./annotation_file/L3_strain/U00096.3.fasta'
+    gff_path = r'./annotation_file/L3_strain/U00096.3.gff'
 
-    # # %% test the density plot function
-    # bamfile = BAMile(bam_ps, gff_ps=gff_ps)
-    # genes_dict = gff_parser(gff_ps)
-    #
-    # fig, ax = plt.subplots(1, 1)
-    # gene = genes_dict['CDS'][50]  # type: GeneFeature
-    # a = bamfile.plot_coverage(gene.genome, gene.start - 500, gene.end + 500, window=0)
-    # # ax.hlines(y=100, xmax=gene.start, xmin=gene.end, linestyles='dotted', color='r', label=gene.gene)
-    # try:
-    #     name = gene.gene
-    # except AttributeError:
-    #     name = gene.gbkey
-    # if gene.strand == '+':
-    #     ax.arrow(gene.start, 0, gene.length, 0, width=10, color='r', label=name)
-    # else:
-    #     ax.arrow(gene.end, 0, -gene.length, 0, width=10, color='r', label=name)
-    # ax.legend()
-    # # ax.set_ylim(-1500, 1500)
-    # fig.show()
-
-    # # %% test custom-made file
-    # genes_dict = gff_parser(gff_ps)
-    # bamflie = BAMile(bam_ps)
-    # bamflie.separate_bam_by_strand()
-    # cds_list = genes_dict['CDS']
-    # id = 'locus_tag'
-    # reads_stat = []
-    # for cds in tqdm(cds_list):
-    #     info = [cds.gene, cds.locus_tag, cds.product, cds.length, cds.strand,
-    #             bamflie.count_cds_reads(cds.genome, cds.start, cds.end, cds.strand)]
-    #     # # print(cds.gene, (cds.genome, cds.start, cds.end, cds.strand))
-    #     # count_reads = bamflie.count_cds_reads(cds.genome, cds.start, cds.end, cds.strand)
-    #     reads_stat.append(info)
-    #
-    # data_frame = pd.DataFrame(data=reads_stat,
-    #                           columns=['gene', 'locus_tag', 'product', 'length', 'strand', 'counts'])
-    # all_counts = np.sum(data_frame['counts'])
-    # data_frame['FPKM'] = data_frame['counts'] * (1000 / data_frame['length']) * (1e6 / all_counts)
-    # data_frame['TPM'] = data_frame['FPKM'] * 1e6 / data_frame['FPKM'].sum()
-    # data_frame.to_csv(bam_ps + '.custom.cds_counts.csv')
-    # # %% test htseq
-    # reverse = 'reverse'
-    # feature = 'CDS'
-    # export_name = bam_ps + '.htseq.cds_counts.tsv'
-    # id = 'locus_tag'
-    # cmd_htseq = f'htseq-count -f bam -s {reverse} -r pos -t {feature} -i {id} -m union -a 10 -n 32 {bam_ps} {gff_ps}' + \
-    #             f' > {export_name}'  # the prefix was used for init env.
-    # print(cmd_htseq)
-    # pipe_cmd = sbps.run(cmd_htseq, shell=True, executable='/bin/bash')
-    # count_tsv = pd.read_csv(export_name, sep='\t', names=[id, 'htseq_counts'], comment='_')
-    # data_frame = pd.merge(data_frame, count_tsv, on='locus_tag', how='left')
-    # data_frame.to_csv(bam_ps + '.combined.cds_counts.csv')
+    features = gff_parser(gff_path)
+    genome_seq = fasta_parser(fa_path)

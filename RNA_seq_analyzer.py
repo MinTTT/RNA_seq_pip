@@ -8,12 +8,7 @@
 
 # Built-in/Generic Imports
 import os
-import sys
-# […]
-
 # Libs
-import pandas as pd
-import numpy as np  # Or any other
 import subprocess as sbps
 import datetime
 from typing import Union, Optional
@@ -142,6 +137,17 @@ class DNASeqAnalyzer:
 
         return stat
     def append_to_log(self, stdout: Union[str, bytes]):
+        """
+        Append the output of the command to the log file.
+        Parameters
+        ----------
+        stdout : str or bytes
+            The output of the command.
+
+        Returns
+        -------
+
+        """
         with open(self.log_file_ps, 'a') as self.log_file:
             try:
                 self.log_file.write(stdout.decode("utf-8") + '\n')
@@ -283,7 +289,8 @@ class RNASeqAnalyzer:
     def counts_statistic(self):
         print(f'[{self.sample_name}] -> Calculate gene expression level.')
         counts_stat, bam = count_feature_reads(self.bam_sorted_ps, self.gff_ps, self.reference_file_path,
-                                               paired_flag=self.paired_flag)
+                                               paired_flag=self.paired_flag, stranded='reverse',
+                                               log_writer=self.append_to_log)
         self.__dict__['counts_stat'] = counts_stat
         self.__dict__['gene_dict'] = bam.gene_features
         self.__dict__['bam'] = bam

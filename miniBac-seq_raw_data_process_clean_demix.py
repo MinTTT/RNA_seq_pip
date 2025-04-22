@@ -8,7 +8,6 @@
 
 # Built-in/Generic Imports
 import os
-
 import subprocess as sbps
 
 # […]
@@ -21,6 +20,7 @@ def run_cmd(cmd):
     cwd = os.getcwd()
     # stat = sbps.Popen('source ~/.bashrc && conda activate bioinfo && '+cmd,
     #                   shell=True, cwd=cwd)
+    print(f'[Running] -> {cmd}')
     stat = sbps.run(cmd, shell=True, cwd=cwd)
 
     return stat
@@ -42,15 +42,19 @@ def find_fq(dir_name, suffix=None):
     samples = list(set([file.split('.')[0] for file in redas_files]))
     samples_dict = {}
     for sample in samples:
+        # determine the sample name by the 1st part of the file name
         files_of_sample = [seqfile for seqfile in redas_files
                            if seqfile.split('.')[0] == sample]
+        # determine the sequence files and types: paired or single.
         sample_dic = {}
         if len(files_of_sample) == 1:
             sample_dic['R1'] = os.path.join(dir_name, files_of_sample[0])
             sample_dic['R2'] = None
             sample_dic['paired'] = False
         elif len(files_of_sample) == 2:
-            if '1' in files_of_sample[0].strip('sample'):
+            # whatever the samples file how to name their sequence files, I identify the file type by the number
+            # if 1 in the file name, it is R1, otherwise it is R2.
+            if '1' in files_of_sample[0].strip(sample):
                 sample_dic['R1'] = os.path.join(dir_name, files_of_sample[0])
                 sample_dic['R2'] = os.path.join(dir_name, files_of_sample[1])
             else:
@@ -77,8 +81,8 @@ folder structure
 cpu_num = 6
 
 # raw data folder
-raw_data_folder = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/rawdata_mixed'
-savdir = '/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/rawdata_mixed'
+raw_data_folder = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250303_RNA-seq/rawdata'
+savdir = '/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250303_RNA-seq/cleaned_data'
 seq_file_suffix = '.fastq.gz'
 # search all files in the folder
 folders = os.listdir(raw_data_folder)
@@ -112,10 +116,10 @@ for sample, seq_files in samples.items():
     # this command will remove the adapter directly with args: -U --umi_loc=read1 --umi_len=7
     # Attention! Not for demultiplexing the samples.
     fastp_command = (f'fastp -i {read1} -I {read2} -o {output_read1} -O {output_read2} ' +
-                     f'-U --umi_loc=read1 --umi_len=7 ' +  # remove the adapter directly
+                     f'-U --umi_loc=read1 --umi_len=7 ' +  # remove the adapter directly # ATTENTION!
                      f'-h {os.path.join(savdir, sample + "_fastp_report.html")} ' +
                      f'-j {os.path.join(savdir, sample + "_fastp_report.json")} ' + f'-w {cpu_num}')
-    print(fastp_command)
+    # print(fastp_command)
     workers.append(Thread(target=run_cmd, args=(fastp_command, )))
 
 
@@ -183,10 +187,8 @@ for worker in workers:
     while active_count() >= max_active_num:
         sleep(5)
     worker.start()
+for worker in workers:
     worker.join()
-
-
-
 
 print('All sequences are trimmed.')
 
