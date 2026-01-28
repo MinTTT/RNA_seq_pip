@@ -12,3 +12,6 @@ CaoLB_output
 *.bt2
 *.bed
 
+/Bin
+/annotation_file
+/annotation_file

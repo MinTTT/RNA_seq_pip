@@ -19,7 +19,7 @@ from threading import Thread
 
 
 def stat_thread(obj: RNASeqAnalyzer, thread_index: int, thread_exit):
-    obj.counts_statistic()
+    obj.counts_statistic(count_mode='htseq')
     thread_exit[thread_index] = True
     return None
 
@@ -31,15 +31,28 @@ BLUE = "\033[34m"
 RESET = "\033[0m"  # Resets color to default
 
 # %%
+# # L3 strain annotation files
 # gff_ps = r'./annotation_file/L3_strain/L3_strain.gff'
 # fasta_ps = r'./annotation_file/L3_strain/L3_strain.fa'
-gff_ps = r'./annotation_file/xcd001_reference/xcd001.1.gff'
-fasta_ps = r'./annotation_file/xcd001_reference/xcd001.1.fa'
-fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/cleanedData'
-output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/outputData'
+# # used for fluorescent protein instertion in different loci
+gff_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/xcd001_reference/xcd001.2.gff'
+fasta_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/xcd001_reference/xcd001.2.fa'
+# # Wild type E. coli strian annotation files
+# gff_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/L3_strain/U00096.3.gff'
+# fasta_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/L3_strain/U00096.3.fasta'
+# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/cleanedData'
+# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/outputData'
 # fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250409_RNA-seq/BGI_seq/cleaned_data'
 # output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250409_RNA-seq/BGI_seq/'
+# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250303_RNA-seq/cleaned_data'
+# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251220_RNA_seq'
+# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251220_RNA_seq/cleaned_data'
+# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251213_RNA-seq_MGI'
+# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251213_RNA-seq_MGI/cleaned_data'
+output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq'
+fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/cleaned_data'
 prefix = ''
+
 threading_max = 3
 
 
@@ -164,8 +177,8 @@ reads_num_map = 'reads; of these:'
 alignment_rate_map = 'overall alignment rate'
 
 for sample in samples:
-    cmd_cp = f"cp {os.path.join(output_dir, prefix + sample + '_output', prefix + sample + '.expression_statistic.csv')} " + \
-             f"{os.path.join(output_dir, prefix + sample + '.expression_statistic.csv')}"
+    cmd_cp = f"cp {os.path.join(output_dir, prefix + sample + '_output', prefix + sample + '_CDS_expression_statistic.csv')} " + \
+             f"{os.path.join(output_dir, prefix + sample + '_CDS_expression_statistic.csv')}"
     print(f'Collect {prefix + sample} statistics.')
     sbps.run(cmd_cp, shell=True)
     # read log file

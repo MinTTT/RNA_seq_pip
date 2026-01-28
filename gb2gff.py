@@ -12,7 +12,6 @@ import sys
 import getopt
 
 # Own modules
-
 from BCBio import GFF
 from Bio import SeqIO
 
@@ -54,5 +53,4 @@ if __name__ == '__main__':
             fasta_flag = True
     except KeyError:
         fasta_flag = True
-
     gb2gff(args[0], fasta=fasta_flag)

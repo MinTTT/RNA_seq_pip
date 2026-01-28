@@ -49,20 +49,25 @@ def find_fq(dir_name, suffix=None):
         suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
     if isinstance(suffix, str):
         suffix = [suffix]
+    else:
+        pass
     files = [file.name for file in os.scandir(dir_name)
              if file.is_file()]
     reads_files = []
     # files form different sequencing company may have different naming rules, so I need to check the file name
     # some use _ to identify the paired files, some use ., use regular expression to find the paired files
     # file names compose sample_name, paired number, and suffix
-    # paired number can be: .1/.2; R1/R2; _1/_2; _R1/_R2; _1_/_2_; _R1_/_R2_; 1/2; R1/R2;
+
     for suf in suffix:
         reads_files += [file for file in files if file[-len(suf):] == suf]
+
     # check the file name
     samples_dict = {}
     for file in reads_files:
         # check the file name
-        match = re.match(r'(.+)([._][Rr][12])(\..+)?$', file)
+        # paired number can be: .1/.2; R1/R2; _1/_2; _R1/_R2; _1_/_2_; _R1_/_R2_; 1/2; R1/R2;
+        match = re.match(r'(.+)([._][Rr]?[12])(\..+)?$', file)
+        # match = re.match(r'(.+)([._][Rr][12])(\..+)?$', file)
         if match:
             sample_name, paired_num, suffix = match.groups()
             if sample_name not in samples_dict:
@@ -100,15 +105,43 @@ class GeneFeature:
         self.end = end
         self.strand = strand
         self.annotation = annotation
-        self.parse_annotation(annotation)
+
         self.length = self.end - self.start + 1
+        self.parse_annotation(annotation)
 
     def __str__(self):
         return self.annotation
 
     def parse_annotation(self, annotation):
-        for ant in annotation.split(';'):
-            self.__dict__[ant.split('=')[0]] = ant.split('=')[-1]
+        # judge gff3 format or gff2 format key=value or key "value"
+        if '=' in annotation:
+            # gff3
+            for ant in annotation.split(';'):
+                name_value = ant.strip().split('=')
+                self.__dict__[name_value[0]] = name_value[-1]
+        elif '"' in annotation:
+            # gff2
+            for ant in annotation.split(';'):
+                key = ant.strip().split(' ')[0]
+                value = re.search(r'"(.*?)"', ant)
+                if value:
+                    self.__dict__[key] = value.group(1)
+
+        gene_id = self.__dict__.get('gene_id', None)
+        if gene_id is None:
+            #  UniProtKB/Swiss-Prot:P08369,ASAP:ABE-0014432,ECOCYC:EG10145 mathch ECOCYC:
+            db_xref = self.__dict__.get('db_xref', None)
+            if db_xref is not None:
+                db_xref_list = db_xref.split(',')
+                for ref in db_xref_list:
+                    ref_lt = ref.split(':')
+                    if ref_lt[0] == 'ECOCYC':
+                        gene_id = ref_lt[1]
+                        self.__dict__['gene_id'] = gene_id
+
+        gene_name = self.__dict__.get('gene_name', None)
+        if gene_name is None:
+            self.__dict__['gene_name'] = self.__dict__.get('gene', None)
 
 
 def bed_writer(ps, features: List[GeneFeature]) -> None:
@@ -119,6 +152,20 @@ def bed_writer(ps, features: List[GeneFeature]) -> None:
 
 
 def gff_parser(gff_ps: str) -> dict:
+    """
+    import *.gff file to set the gene annotations.
+    Return a dict with key is the feature type, value is a list of GeneFeature objects.
+
+    Parameters
+    ----------
+    gff_ps
+
+    Returns
+    -------
+        dict[str, List[GeneFeature]]
+    """
+    if '~' in gff_ps:
+        gff_ps = os.path.expanduser(gff_ps)
     with open(gff_ps, 'r') as file:
         content = file.readlines()
 
@@ -157,6 +204,47 @@ def gff_parser(gff_ps: str) -> dict:
         gene_dict[gene.feature].append(gene)
 
     return gene_dict
+
+
+def parse_gffgtf_annotation(gene: GeneFeature) -> dict:
+    # write length, gene id, gene product, gene name
+    cds_annotation = gene.annotation.split(';')
+    cds_annotation_dict = {}
+    # check annotation type, gff2 or gff3
+    if '=' in cds_annotation[0]:
+        # gff3
+        for item in cds_annotation:
+            # key=value
+            key_value = item.strip().split('=')
+            key = key_value[0]
+            value = '='.join(key_value[1:])
+            cds_annotation_dict[key] = value
+    else:
+        # gff2
+        for item in cds_annotation:
+            # key "value"
+            key_value = item.strip().split(' ')
+            key = key_value[0]
+            value = ' '.join(key_value[1:]).replace('"', '')
+            cds_annotation_dict[key] = value
+
+    length = gene.length
+    locus_tag = cds_annotation_dict.get('locus_tag', None)
+    gene_id = cds_annotation_dict.get('gene_id', None)
+    if gene_id is None:
+        #  UniProtKB/Swiss-Prot:P08369,ASAP:ABE-0014432,ECOCYC:EG10145 mathch ECOCYC:
+        db_xref = cds_annotation_dict.get('db_xref', None)
+        if db_xref is not None:
+            db_xref_list = db_xref.split(',')
+            for ref in db_xref_list:
+                ref_lt = ref.split(':')
+                if ref_lt[0] == 'ECOCYC':
+                    gene_id = ref_lt[1]
+    product = cds_annotation_dict.get('product', None)
+    gene_name = cds_annotation_dict.get('gene_name', None)
+    if gene_name is None:
+        gene_name = cds_annotation_dict.get('gene', None)
+    return cds_annotation_dict
 
 
 def fasta_parser(fasta_ps: str):
@@ -751,15 +839,53 @@ def count_reads_custom(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = '
     return data_frame, bamflie
 
 
-def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', stranded: str = 'reverse',
-                      log_writer=None):
+def count_reads_featureCounts(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', stranded: str = 'reverse',
+                      log_writer=None) -> Tuple[pd.DataFrame, int]:
     """
+    Count the reads mapped to the features in the gff file using featureCounts.
 
     Parameters
     ----------
     bam_ps
     gff_ps
-    feature
+    feature: str
+        the feature type in gff file, default is CDS, other options: gene, rRNA, tRNA.
+    stranded: str
+        For stranded=yes and single-end reads, the read has to be mapped to the same strand as the feature.
+        For paired-end reads, the first read has to be on the same strand and the second read on the opposite strand.
+    """
+    # example of featureCounts command:
+    """
+    ./featureCounts -p  --countReadPairs 
+    -t [feature type for example: gene] -g [feature id, for example: locus_tag] 
+    -a  [gff2 path] -o [sam file output path, if need feature assigned sam file] -T [Number of the threads] 
+    -s [strand-specific read counting 0 (unstranded), 1 (stranded) and 2 (reversely stranded)]
+    """
+    if isinstance(bam_ps, str):
+        bam_ps = [bam_ps]
+
+    id = 'locus_tag'
+    bam_dir = os.path.dirname(bam_ps[0])
+    count_filename = f'htseq.{feature}_counts.tsv'
+    export_name = os.path.join(bam_dir, count_filename)
+    # check the result file
+    no_file_flag = count_filename not in os.listdir(bam_dir)
+    # since the featureCounts only support gff2 format, so we need to convert the gff3 file to gff2
+
+
+
+
+def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS', stranded: str = 'reverse',
+                      log_writer=None) -> Tuple[pd.DataFrame, int]:
+    """
+    Count the reads mapped to the features in the gff file using htseq-count.
+
+    Parameters
+    ----------
+    bam_ps
+    gff_ps
+    feature: str
+        the feature type in gff file, default is CDS, other options: gene, rRNA, tRNA.
     stranded: str
         For stranded=yes and single-end reads, the read has to be mapped to the same strand as the feature.
         For paired-end reads, the first read has to be on the same strand and the second read on the opposite strand.
@@ -767,27 +893,48 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
 
     Returns
     -------
+        DataFrame: the counts table [locus_tag, htseq_counts]
+        float: the total number of aligned reads
 
     """
     if isinstance(bam_ps, str):
         bam_ps = [bam_ps]
 
     id = 'locus_tag'
-    export_name = os.path.join(os.path.split(bam_ps[0])[0], 'htseq.cds_counts.tsv')
+    bam_dir = os.path.dirname(bam_ps[0])
+    count_filename = f'htseq.{feature}_counts.tsv'
+    export_name = os.path.join(bam_dir, count_filename)
     # check the result file
-    no_file_flag = export_name not in os.listdir(os.path.split(bam_ps[0])[0])
+    no_file_flag = count_filename not in os.listdir(bam_dir)
     if no_file_flag is False:
         # check the files size
         file_size = os.path.getsize(export_name)
+        # check if the file is empty
         if file_size <= 1:
             no_file_flag = True
-            # remove the expoert file
+            # remove the exported file
             print(f'Remove old file :{export_name}, File size: {file_size} bytes.')
             os.remove(export_name)
 
     if no_file_flag:
-        cmd_htseq = f"htseq-count -f bam -s {stranded} -r pos --max-reads-in-buffer=120000000 -t {feature} -i {id} -m union " \
-                    f"--nonunique fraction -a 10 -n 32 -q {' '.join(bam_ps)} {gff_ps}" \
+        # sort bam file by name
+        input_sam_files = ' '.join(bam_ps)
+        out_put_sam_files = ' '.join([file+'.name.bam' for file in bam_ps])
+        cmd_samtools = f'samtools sort -@ 6 -n {input_sam_files} -o {out_put_sam_files}'
+        if log_writer:
+            log_writer(cmd_samtools)
+        print(cmd_samtools)
+        status = sbps.Popen(cmd_samtools, shell=True, stdout=sbps.PIPE, stderr=sbps.PIPE, cwd=os.getcwd())
+        stdout, stderr = status.communicate()
+        if log_writer:
+            log_writer(stdout)
+            log_writer(stderr)
+        if status.returncode != 0:
+            print(f'Sort bam file failed: {status.stderr}')
+            raise SystemError('Sort bam file failed')
+        # count！
+        cmd_htseq = f"htseq-count -r name -f bam -s {stranded} -t {feature} -i {id} -m union " \
+                    f"--nonunique fraction -a 10 -n 16 -q {out_put_sam_files} {gff_ps}" \
                     + f" > {export_name}"  # the prefix was used for init env.
         if log_writer:
             log_writer(cmd_htseq)
@@ -799,6 +946,10 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
         if log_writer:
             log_writer(std_out)
             log_writer(std_err_log)
+
+        # remove the sam files that sorted by  name
+        for file in out_put_sam_files.split(' '):
+            os.remove(file)
 
     columns_title = [id]
     for i in range(len(bam_ps)):
@@ -813,37 +964,134 @@ def count_reads_htseq(bam_ps: Union[str, list], gff_ps: str, feature: str = 'CDS
     reverse_cds_mask = [i for i in map(lambda x: not x, cds_mask)]
     cds_tsv = count_tsv.loc[cds_mask]
     reads_info_tsv = count_tsv.loc[reverse_cds_mask]
-    # print(cds_tsv)
-    # print(reads_info_tsv)
-    all_reads = (np.sum(cds_tsv['htseq_counts']) + reads_info_tsv[reads_info_tsv[id] == '__no_feature'][
+
+    reads_number_aligned = (np.sum(cds_tsv['htseq_counts']) + reads_info_tsv[reads_info_tsv[id] == '__no_feature'][
         'htseq_counts'].values
                  + reads_info_tsv[reads_info_tsv[id] == '__ambiguous']['htseq_counts'].values)
 
-    return cds_tsv, all_reads
+    return cds_tsv, reads_number_aligned
 
 
-def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS', paired_flag: bool = True,
-                        stranded: str = 'reverse', cleaned=False, log_writer=None) -> Tuple[pd.DataFrame, BAMile]:
-    # count the reads in the bam file. Methd: coverage based
-    custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps,
-                                                feature, paired_flag=paired_flag)
-    bamflie.fmt_print('HTseq counting.')
-    # count the reads in the bam file. Methd: htseq-count
-    if cleaned:
-        bam_ps_htseq = [bamflie.cleaned_reads_reverse_strand_ps,
-                        bamflie.cleaned_reads_forward_strand_ps]
-    else:
-        bam_ps_htseq = [bam_ps]
+def count_feature_reads(bam_ps: str, gff_ps: str, fasta_ps: str, feature: str = 'CDS',
+                        paired_flag: bool = True, stranded: str = 'reverse', cleaned=False,
+                        log_writer=None, mode='full', count_feature='gene') \
+        -> Tuple[pd.DataFrame, Optional[BAMile]]:
+    """
+    Count the reads mapped to the features in the gff file.
 
-    htseq_counts, all_reads = count_reads_htseq(bam_ps_htseq, gff_ps, feature,
-                                                stranded, log_writer=log_writer)
+    Parameters
+    ----------
+    count_feature
+    bam_ps
+    gff_ps
+    fasta_ps
+    feature
+    paired_flag
+    stranded
+    cleaned
+    log_writer
+    mode
 
-    data_frame = pd.merge(custom_counts, htseq_counts, on='locus_tag', how='left')
-    data_frame['htseq_FPKM'] = data_frame['htseq_counts'] * (1000 / data_frame['length']) * (
-            1e6 / all_reads)
-    data_frame['htseq_TPM'] = data_frame['htseq_FPKM'] * 1e6 / data_frame['htseq_FPKM'].sum()
+    Returns
+    -------
 
-    return data_frame, bamflie
+    """
+
+    # mode: full, htseq, custom
+    if mode not in ['full', 'htseq', 'custom']:
+        raise ValueError('Mode should be either "full" or "htseq" or "custom"')
+    bam_ps_htseq = None
+
+    if mode == 'full' or mode == 'custom':
+        # count the reads in the bam file. Methd: coverage based
+        custom_counts, bamflie = count_reads_custom(bam_ps, gff_ps, fasta_ps,
+                                                    feature, paired_flag=paired_flag)
+        if cleaned:
+            bam_ps_htseq = [bamflie.cleaned_reads_reverse_strand_ps,
+                            bamflie.cleaned_reads_forward_strand_ps]
+        bamflie.fmt_print('HTseq counting.')
+        if mode == 'custom':
+            return custom_counts, bamflie
+
+    if mode == 'htseq' or mode == 'full':
+
+        # count the reads in the bam file. Methd: htseq-count
+
+        if bam_ps_htseq is None:
+            bam_ps_htseq = [bam_ps]
+        # htseq will counting all reads in the bam file, including rRNA and tRNA reads.
+        htseq_counts, all_reads = count_reads_htseq(bam_ps_htseq, gff_ps, feature=count_feature,
+                                                    stranded=stranded, log_writer=log_writer)
+        print('Calcuate FPKM and TPM based on htseq counts.')
+        # get gene length by locus tag
+        gene_dict = gff_parser(gff_ps)
+        for gene in gene_dict[count_feature]:
+            # # write length, gene id, gene product, gene name
+            # cds_annotation = gene.annotation.split(';')
+            # cds_annotation_dict = {}
+            # # check annotation type, gff2 or gff3
+            # if '=' in cds_annotation[0]:
+            #     # gff3
+            #     for item in cds_annotation:
+            #         # key=value
+            #         key_value = item.split('=')
+            #         key = key_value[0]
+            #         value = '='.join(key_value[1:])
+            #         cds_annotation_dict[key] = value
+            # else:
+            #     # gff2
+            #     for item in cds_annotation:
+            #        # key "value"
+            #         key_value = item.split(' ')
+            #         key = key_value[0]
+            #         value = ' '.join(key_value[1:]).replace('"', '')
+            #         cds_annotation_dict[key] = value
+            #
+            # length = gene.length
+            # locus_tag = cds_annotation_dict.get('locus_tag', None)
+            # gene_id = cds_annotation_dict.get('gene_id', None)
+            # if gene_id is None:
+            #     #  UniProtKB/Swiss-Prot:P08369,ASAP:ABE-0014432,ECOCYC:EG10145 mathch ECOCYC:
+            #     db_xref = cds_annotation_dict.get('db_xref', None)
+            #     if db_xref is not None:
+            #         db_xref_list = db_xref.split(',')
+            #         for ref in db_xref_list:
+            #             ref_lt = ref.split(':')
+            #             if ref_lt[0] == 'ECOCYC':
+            #                 gene_id = ref_lt[1]
+            # product = cds_annotation_dict.get('product', None)
+            # gene_name = cds_annotation_dict.get('gene_name', None)
+            # if gene_name is None:
+            #     gene_name = cds_annotation_dict.get('gene', None)
+            locus_tag = gene.locus_tag
+            gene_id = getattr(gene, 'gene_id', None)
+            product = getattr(gene, 'product', None)
+            gene_name = getattr(gene, 'gene', None)
+            length = gene.length
+            htseq_counts.loc[htseq_counts['locus_tag'] == locus_tag, 'length'] = int(length)
+            htseq_counts.loc[htseq_counts['locus_tag'] == locus_tag, 'gene_id'] = gene_id
+            htseq_counts.loc[htseq_counts['locus_tag'] == locus_tag, 'product'] = product
+            htseq_counts.loc[htseq_counts['locus_tag'] == locus_tag, 'gene_name'] = gene_name
+        # # statistics
+        # all_counts = htseq_counts['htseq_counts'].sum()
+        # htseq_counts['htseq_FPKM'] = htseq_counts['htseq_counts'] * (1000 / htseq_counts['length']) * (
+        #         1e6 / all_counts)
+        # # htseq_counts['htseq_TPM'] = htseq_counts['htseq_FPKM'] * 1e6 / htseq_counts['htseq_FPKM'].sum()
+        # htseq_counts['htseq_TPM'] = 1e6 * htseq_counts['htseq_counts'] / htseq_counts['length'] / \
+        #                             np.sum(htseq_counts['htseq_counts'] / htseq_counts['length'])
+        # htseq_counts['htseq_RPM'] = htseq_counts['htseq_counts'] * (1e6 / all_counts)
+        if mode == 'htseq':
+            return htseq_counts, None
+
+    if mode == 'full':
+
+        data_frame = pd.merge(custom_counts, htseq_counts, on='locus_tag', how='left')
+
+        # data_frame['htseq_FPKM'] = data_frame['htseq_counts'] * (1000 / data_frame['length']) * (
+        #         1e6 / all_reads)
+        # data_frame['htseq_TPM'] = data_frame['htseq_FPKM'] * 1e6 / data_frame['htseq_FPKM'].sum()
+
+        return data_frame, bamflie
 
 
 def base_position2relative_pos(pos, genome_length, ori=1, ter=None) -> Tuple[float, float]:

@@ -97,12 +97,12 @@ folder structure
       |_____ *.fastq.gz
 """
 
-cpu_num = 6
+cpu_num = 8
 
 # raw data folder
-raw_data_folder = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250409_RNA-seq/BGI_seq/F25A040001651_LIBpuadR_0416'
-savdir = '/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250409_RNA-seq/BGI_seq/cleaned_data'
-
+raw_data_folder = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/RawData/N2601923_80-2084156168_20260125134435/260123-A00199B'
+savdir = '/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/cleaned_data'
+deduplication = False
 seq_file_suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
 # pause the program and check the folder, press Enter for continue
 while True:
@@ -207,6 +207,8 @@ for sample, seq_files in samples.items():
                      f'-U --umi_loc=read1 --umi_len=7 ' +  # remove the adapter directly
                      f'-h {os.path.join(savdir, sample + "_fastp_report.html")} ' +
                      f'-j {os.path.join(savdir, sample + "_fastp_report.json")} ' + f'-w {cpu_num}')
+    if deduplication:
+        fastp_command += ' --dedup'
     # print(fastp_command)
     workers.append(Thread(target=run_cmd, args=(fastp_command, )))
 
