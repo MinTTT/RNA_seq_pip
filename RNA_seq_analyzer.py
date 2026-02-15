@@ -221,7 +221,18 @@ class RNASeqAnalyzer:
             except AttributeError:
                 self.log_file.write(stdout + '\n')
 
-    def seq_data_align(self):
+    def seq_data_align(self,  align_mode='default'):
+        """
+
+        Parameters
+        ----------
+        align_mode: str
+            'default', 'strict'
+
+        Returns
+        -------
+
+        """
 
         # clean raw data
         if os.path.basename(self.seq_data_ps1) not in self.file_in_dir:
@@ -260,7 +271,9 @@ class RNASeqAnalyzer:
             lnk_path = os.path.join(self.indexed_reference_dir, 'ref.fa')
             if 'ref.fa' in os.listdir(self.indexed_reference_dir):
                 os.remove(os.path.join(self.indexed_reference_dir, 'ref.fa'))
-
+            # if reference file path is a relative path, make it absolute
+            if not os.path.isabs(self.reference_file_path):
+                self.reference_file_path = os.path.abspath(self.reference_file_path)
             cmd_lnk_ref = f'ln -s {self.reference_file_path} ' + \
                           f'{lnk_path}'
             print(f'[{self.sample_name}] -> Link Reference: {cmd_lnk_ref}')
@@ -274,9 +287,9 @@ class RNASeqAnalyzer:
                 exit(1)
             self.reference_file_path = lnk_path
 
-            cmd_index = f'bowtie2-build -f {self.reference_file_path} {self.indexed_base_name}'
+            cmd_index = f'bowtie2-build -f {self.reference_file_path} {os.path.join(self.indexed_reference_dir, self.indexed_base_name)}'
             print(f'[{self.sample_name}] -> Generate indexed reference: {cmd_index}')
-            status2 = self.cmd_shell(cmd_index, cwd=self.indexed_reference_dir)
+            status2 = self.cmd_shell(cmd_index )
             # remove link file
             if os.path.exists(lnk_path):
                 os.remove(lnk_path)
@@ -307,17 +320,25 @@ class RNASeqAnalyzer:
                             f' -U {self.seq_data_ps1} ' \
                             f'-S {self.sam_file_ps}'
             else:  # paired reads
-                cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
-                            f'--very-sensitive-local -X 1000 -I 18 --no-1mm-upfront --score-min G,9,8 --no-mixed --no-discordant ' \
-                            f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
-                            f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
-                            f'-S {self.sam_file_ps}'
-                """
-                change log
-                20240113 add new parameters: 
-                    --very-sensitive-local -X 1000 -I 18 --no-1mm-upfront 
-                    --score-min G,9,8 --no-mixed --no-discordant 
-                """
+                if align_mode == 'default':
+                    cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
+                                f'--no-mixed --no-discordant ' \
+                                f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
+                                f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
+                                f'-S {self.sam_file_ps}'
+                elif align_mode == 'strict':
+
+                    cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
+                                f'--very-sensitive-local -X 1000 -I 18 --no-1mm-upfront --score-min G,9,8 --no-mixed --no-discordant ' \
+                                f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
+                                f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
+                                f'-S {self.sam_file_ps}'
+                    """
+                    change log
+                    20240113 add new parameters: 
+                        --very-sensitive-local -X 1000 -I 18 --no-1mm-upfront 
+                        --score-min G,9,8 --no-mixed --no-discordant 
+                    """
 
             print(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)
             self.append_to_log(f"[{self.sample_name}] -> Mapping reads: " + cmd_align)

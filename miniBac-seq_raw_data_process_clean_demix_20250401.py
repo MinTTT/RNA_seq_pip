@@ -10,11 +10,9 @@
 import os
 import subprocess as sbps
 import re
-# […]
-
-# […]
 from threading import Thread, active_count
 from time import sleep
+
 
 def run_cmd(cmd):
     cwd = os.getcwd()
@@ -97,15 +95,48 @@ folder structure
       |_____ *.fastq.gz
 """
 
-cpu_num = 8
+import argparse as arg
 
+parser = arg.ArgumentParser()
+# cpu number
+parser.add_argument('-c', '--cpu', type=int, default=8,
+                    help='Number of CPUs to use. Default: 8')
 # raw data folder
+parser.add_argument('-i', '--input_dir', type=str,
+                    help='Input folder containing *.fastq.gz')
+# save data folder
+parser.add_argument('-o', '--output_dir', type=str,
+                    help='Output folder for cleaned *.fastq.gz')
+# deduplication
+parser.add_argument('-d', '--dedup', action='store_true',
+                    help='Enable deduplication during fastp processing.')
+
+parser.add_argument('-r', '--run_pipeline', action='store_true', help='Run the pipeline without prompts.')
+
+args = parser.parse_args()
+
+cpu_num = 8
 raw_data_folder = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/RawData/N2601923_80-2084156168_20260125134435/260123-A00199B'
 savdir = '/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/cleaned_data'
+
+if args.cpu:
+    cpu_num = args.cpu
+
+
+if args.input_dir:
+    raw_data_folder = args.input_dir
+
+
+if args.output_dir:
+    savdir = args.output_dir
+
+run_pipline = args.run_pipeline
+
+
 deduplication = False
 seq_file_suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
 # pause the program and check the folder, press Enter for continue
-while True:
+while not run_pipline:
     input_folder = input(f'{GREEN}Please check the folder (press Enter to continue or specify dir): \n{RESET}{raw_data_folder}\n')
     if input_folder == '':
         break
@@ -120,7 +151,7 @@ while True:
 
 # check the save folder
 # print(f'Please check the save folder (press Enter to continue): \n{savdir}')
-while True:
+while not run_pipline:
     input_savdir = input(f'{GREEN}Please check the folder (press Enter to continue or specify dir):{RESET}\n {savdir}')
 
     if input_savdir == '':
@@ -166,8 +197,10 @@ if len(samples) == 0:
     print(f'{RED}No fastq files found in {raw_data_folder}, please check the folder.{RESET}')
     exit(0)
 else:
-    print('''all samples' name: ''', samples)
-    while True:
+    print('''all samples' name: ''')
+    for sample in samples.keys():
+        print(f'- {sample}')
+    while not run_pipline:
         for sample, seq_files in samples.items():
             print(f"{YELLOW}Sample: {sample}{RESET}")
             print(f"-> R1: {seq_files['R1']}")

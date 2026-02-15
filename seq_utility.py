@@ -207,6 +207,17 @@ def gff_parser(gff_ps: str) -> dict:
 
 
 def parse_gffgtf_annotation(gene: GeneFeature) -> dict:
+    """
+    This function can parse the annotation of a gene feature from GFF/GTF file.
+    Note this function is
+    Parameters
+    ----------
+    gene
+
+    Returns
+    -------
+
+    """
     # write length, gene id, gene product, gene name
     cds_annotation = gene.annotation.split(';')
     cds_annotation_dict = {}

@@ -7,9 +7,7 @@ Custom-made code `reannotte_bg.py` was used to compare and modify the annotation
 
 #%%
 from Bio import SeqIO
-from Bio.Seq import Seq
-import typing
-import types
+
 # from Bio import Align
 from Bio.Blast.Applications import NcbiblastnCommandline
 from io import StringIO 

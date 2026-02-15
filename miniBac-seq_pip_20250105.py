@@ -38,28 +38,53 @@ RESET = "\033[0m"  # Resets color to default
 gff_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/xcd001_reference/xcd001.2.gff'
 fasta_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/xcd001_reference/xcd001.2.fa'
 # # Wild type E. coli strian annotation files
-# gff_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/L3_strain/U00096.3.gff'
-# fasta_ps = r'~/PycharmProjects/RNA_seq_pip/annotation_file/L3_strain/U00096.3.fasta'
-# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/cleanedData'
-# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20241201_RNA-seq/outputData'
-# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250409_RNA-seq/BGI_seq/cleaned_data'
-# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250409_RNA-seq/BGI_seq/'
-# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20250303_RNA-seq/cleaned_data'
-# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251220_RNA_seq'
-# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251220_RNA_seq/cleaned_data'
-# output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251213_RNA-seq_MGI'
-# fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251213_RNA-seq_MGI/cleaned_data'
+
 output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq'
 fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/cleaned_data'
 prefix = ''
-
 threading_max = 3
+bowtie_pars = {"-p": 32}
 
+import argparse as arg
+# gff file path
+parser = arg.ArgumentParser(description='RNA-seq data analysis pipeline.')
+parser.add_argument('-gff', '--gff_file', type=str, default=gff_ps,
+                    help='The gff file path.')
+# fasta file path
+parser.add_argument('-fa', '--fasta_file', type=str, default=fasta_ps,
+                    help='The fasta file path.')
+# output directory
+parser.add_argument('-o', '--output_dir', type=str, default=output_dir,
+                    help='The output directory.')
+# fastq directory
+parser.add_argument('-fq', '--fastq_dir', type=str, default=fastq_dir,
+                    help='The folder that contains the fastq files.')
+# threading max
+parser.add_argument('-tm', '--threading_max', type=int, default=threading_max,
+                    help='The max threading number.')
+# run pipeline will not have break
+parser.add_argument('-r', '--run_pipeline', action='store_true')
+
+
+args = parser.parse_args()
+
+if args.gff_file:
+    gff_ps = args.gff_file
+if args.fasta_file:
+    fasta_ps = args.fasta_file
+if args.output_dir:
+    output_dir = args.output_dir
+if args.fastq_dir:
+    fastq_dir = args.fastq_dir
+if args.threading_max:
+    threading_max = args.threading_max
+# run pipeline will not have break
+run_pipeline = args.run_pipeline
 
 
 seq_file_suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq']
 # pause the program and check the folder, press Enter for continue
-while True:
+while not run_pipeline:
     input_folder = input(f'{GREEN}Please check the folder that contains seq data (press Enter to continue or specify dir): \n{RESET}{fastq_dir}\n')
     if input_folder == '':
         break
@@ -74,9 +99,8 @@ while True:
 
 # check the save folder
 # print(f'Please check the save folder (press Enter to continue): \n{savdir}')
-while True:
+while not run_pipeline:
     input_savdir = input(f'{GREEN}Please check the folder for saving results (press Enter to continue or specify dir):{RESET}\n {output_dir}')
-
     if input_savdir == '':
         break
     else:
@@ -98,6 +122,10 @@ while True:
                     exit(0)
                 else:
                     pass
+if run_pipeline:
+    # reate folder if not exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
 thread_init = 0
 sample_names_rep = []
@@ -112,7 +140,7 @@ for i, sample in enumerate(samples):
     print(f'{GREEN}[{i+1}] Sample name: {RESET} {sample}')
 # let user check the sample names, run all samples by default, else user can choose the samples need to run, samples may
 # be seperated by space or comma
-while True:
+while not run_pipeline:
     input_samples = input(f'{GREEN}Please check the sample names (press Enter to continue or specify samples): \n{RESET}')
     if input_samples == '':
         break
@@ -132,11 +160,11 @@ statistic_list = []
 for sample in samples:
     read1 = samples_dict[sample]['R1']
     read2 = samples_dict[sample]['R2']
-    process_pip = RNASeqAnalyzer(prefix + sample, seq_ps1=read1, seq_ps2=read2, bowtie_pars={"-p": 60},
+    process_pip = RNASeqAnalyzer(prefix + sample, seq_ps1=read1, seq_ps2=read2, bowtie_pars=bowtie_pars,
                                  output_dir=output_dir,
                                  ref_ps=fasta_ps, gff_ps=gff_ps)
     # mapping
-    process_pip.seq_data_align()
+    process_pip.seq_data_align(align_mode='strict')
     thread_exit.append(False)
     # statistic
     # thread.start_new_thread(stat_thread, (process_pip, thread_init, thread_exit))

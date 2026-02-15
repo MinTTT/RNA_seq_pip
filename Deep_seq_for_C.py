@@ -19,8 +19,6 @@ import numpy as np  # Or any other
 # […]
 
 # Own modules
-
-
 from scipy.stats import binned_statistic, linregress
 import matplotlib.pyplot as plt
 import sciplot as splt
@@ -191,37 +189,3 @@ if __name__ == '__main__':
     sbp.run(cmd, shell=True)
 
 
-
-#%%
-    # # deep_seq_pip('WT', ref_ps, sample_msg['WT'], ori_site, bin_length, exp_dir, 0)
-    # sample_name = 'WT'
-    # ref_ps = '/media/fulab/Fu_lab_data1/seq_data/20211101_dnaA_datA/1655_genome_Liu_lab.fa'
-    # exp_dir = '/media/fulab/Fu_lab_data1/seq_data/20211101_dnaA_datA/dnaAdatA/'
-    # sample = RNASeqAnalyzer(sample_name=sample_name, ref_ps=ref_ps, gff_ps=None,
-    #                         seq_ps1=sample_msg['WT'][0], seq_ps2=sample_msg['WT'][1], bowtie_pars={"-p": 32},
-    #                         output_dir=exp_dir)
-    # sample.seq_data_align()
-    #
-    # bam_file = BAMile(sample.bam_sorted_ps, sample.gff_ps, sample.reference_file_path,
-    #                   paired_flag=sample.paired_flag)
-    # bam_file.separate_bam_by_strand(clean_rtRNA=False)
-    # bam_file.count_coverage()
-    # coverage = bam_file.fetch_coverage(bam_file.genome_set[0], ori_site, ori_site - 1, move_average=150)
-    #
-    # genome_length = len(bam_file.genomes[bam_file.genome_set[0]])
-    # coverage_binned = binned_statistic(np.arange(len(coverage)), coverage, 'mean',
-    #                                    bins=int(genome_length / bin_length))
-    #
-    # coverage_binned_mean = coverage_binned.statistic
-    # zerio_index = round(len(coverage_binned_mean) / 2)
-    # coverage_binned_mean = np.roll(coverage_binned_mean, round(zerio_index))
-    #
-    # left_pos = np.linspace(-1, 0, num=zerio_index, endpoint=False)
-    # right_pos = np.linspace(0, 1, num=(len(coverage_binned_mean) - zerio_index), endpoint=True)
-    # relative_pos = np.concatenate([left_pos, right_pos])
-    #
-    # genome_index = np.arange(1, genome_length)
-    # genome_index = np.roll(genome_index, genome_length - ori_site)[::bin_length][:-1]
-    # inf_filter = coverage_binned_mean > 0
-    # log2_coverage = np.zeros(len(coverage_binned_mean))
-    # log2_coverage[inf_filter] = np.log2(coverage_binned_mean[inf_filter])
