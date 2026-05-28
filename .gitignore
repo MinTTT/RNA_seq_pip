@@ -16,3 +16,5 @@ CaoLB_output
 /annotation_file
 /annotation_file
 /deprecated
+__pycache__
+*.pyc

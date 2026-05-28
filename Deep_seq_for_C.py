@@ -9,6 +9,7 @@
 # Built-in/Generic Imports
 import os
 import sys
+import argparse
 # […]
 
 # Libs
@@ -144,12 +145,28 @@ def deep_seq_pip(sample_name, ref_ps, reads, ori_site, ter_site, bin_length, exp
 # %%
 if __name__ == '__main__':
     # %%
-    parent_dir = r'/media/fulab/fulab_zc_1/seq_data/LLW_data/20220322_17_sample_data/17_sample/soapnuke/clean'
-    ref_ps = '/media/fulab/fulab_zc_1/seq_data/Genome_ref/1655_genome_Liu_lab_20220322.fa'
-    exp_dir = r'/media/fulab/fulab_zc_1/seq_data/LLW_data/20220322_17_sample_data/17_sample_deep_seq_results'
-    ori_site = 1  # 3925859
-    ter_site = 2305111
-    bin_length = 5000
+    parser = argparse.ArgumentParser(description='Deep-seq coverage analysis pipeline.')
+    parser.add_argument('--parent_dir', type=str, required=True,
+                        help='Path to the parent directory containing sample subdirectories with cleaned reads.')
+    parser.add_argument('--ref_ps', type=str,
+                        default=os.path.join('annotation_file', 'Genome_ref', '1655_genome_Liu_lab_20220322.fa'),
+                        help='Path to the reference genome FASTA file.')
+    parser.add_argument('--exp_dir', type=str, required=True,
+                        help='Path to the export/output directory for results.')
+    parser.add_argument('--ori_site', type=int, default=1,
+                        help='Location of oriC on the genome (default: 1).')
+    parser.add_argument('--ter_site', type=int, default=2305111,
+                        help='Location of the terminus site on the genome (default: 2305111).')
+    parser.add_argument('--bin_length', type=int, default=5000,
+                        help='Bin size for coverage binning (default: 5000).')
+    args = parser.parse_args()
+
+    parent_dir = args.parent_dir
+    ref_ps = args.ref_ps
+    exp_dir = args.exp_dir
+    ori_site = args.ori_site
+    ter_site = args.ter_site
+    bin_length = args.bin_length
 
     sample_dir = [fold.name for fold in os.scandir(parent_dir) if fold.is_dir()]
     sample_msg = {}
