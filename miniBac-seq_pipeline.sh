@@ -1,12 +1,12 @@
 #!/bin/bash
-
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CPU=8
 DEDUO=false
 RUN_PIPELINE=true
-CLEAN_OUTPUT_DIRP="./cleanData"
+CLEAN_OUTPUT_DIR="./cleanData"
+CLEAN_SCRIPT="$SCRIPT_DIR/miniBac-seq_raw_data_process_clean_demix_20250401.py"
+STATISTICS_SCRIPT="$SCRIPT_DIR/miniBac-seq_pip_20250105.py"
 RET_OUTPUT_DIR="./"
-CLEAN_SCRIPT="./miniBac-seq_raw_data_process_clean_demix_20250401.py"
-STATISTICS_SCRIPT="./miniBac-seq_pip_20250105.py"
 
 usage() {
     echo "Usage: $0 -i <raw_data_dir> -g <gff_file> -f <fasta_file> [options]"

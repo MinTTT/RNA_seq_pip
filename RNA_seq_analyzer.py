@@ -386,8 +386,15 @@ class RNASeqAnalyzer:
         # statistics tpm, fpkm, etc.
         # 1. calculate rRNA ratio
         gene_dcit = gff_parser(self.gff_ps)
-        rRNA_list = gene_dcit['rRNA']
-        tRNA_list = gene_dcit['tRNA']
+        # try to get rRNA and tRNA region
+        if 'rRNA' in gene_dcit.keys():
+            rRNA_list = gene_dcit['rRNA']
+        else:
+            rRNA_list = []
+        if 'tRNA' in gene_dcit.keys():
+            tRNA_list = gene_dcit['tRNA']
+        else:
+            tRNA_list = []
         # rRNA counts
         rRNA_counts = 0
         for gene_feature in rRNA_list:
