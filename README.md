@@ -74,7 +74,7 @@ conda env create -f env.yml
 conda activate bioinfo
 ```
 
-**Key dependencies:** Python 3.12, Bowtie2, samtools, HTSeq, fastp (v1.1.0), cutadapt, pysam, Biopython, pandas, numpy, scipy, matplotlib, seaborn, scikit-learn, joblib, tqdm, pysamstats.
+**Key dependencies:** Python 3.12, Bowtie2, samtools, HTSeq, fastp (v1.1.0), cutadapt, pysam, Biopython, bcbio-gff, pandas, numpy, scipy, matplotlib, seaborn, scikit-learn, joblib, tqdm, pysamstats.
 
 ---
 
@@ -240,8 +240,97 @@ python Deep_seq_for_C.py \
 python genome_annotation_utilities.py <input.gb>
 ```
 
-- Converts GenBank (`.gb`) files to GFF3, GFF2/GTF, and FASTA
-- Queries NCBI Entrez to find UniProtKB IDs from NCBI Gene IDs
+The script auto-detects GenBank and GFF3 inputs by extension.
+
+Supported GenBank extensions: `.gb`, `.gbk`, `.gbff`, `.genbank`
+
+Supported GFF3 extensions: `.gff`, `.gff3`
+
+**GenBank to GFF3:**
+
+```shell
+python genome_annotation_utilities.py annotation.gb
+```
+
+Output:
+
+```text
+annotation.gff
+```
+
+**GenBank to GFF3 and FASTA:**
+
+```shell
+python genome_annotation_utilities.py annotation.gb --fasta
+```
+
+Output:
+
+```text
+annotation.gff
+annotation.fasta
+```
+
+**GenBank to GFF3, FASTA, and GTF/GFF2:**
+
+```shell
+python genome_annotation_utilities.py annotation.gb --fasta --gff2
+```
+
+Output:
+
+```text
+annotation.gff
+annotation.fasta
+annotation.gtf
+```
+
+**Existing GFF3 to GTF/GFF2:**
+
+```shell
+python genome_annotation_utilities.py annotation.gff3
+```
+
+or, for backward compatibility:
+
+```shell
+python genome_annotation_utilities.py annotation.gff3 --gff3togff2
+```
+
+Output:
+
+```text
+annotation.gtf
+```
+
+**Output controls:**
+
+```shell
+python genome_annotation_utilities.py annotation.gb \
+    --fasta \
+    --gff2 \
+    --output-dir ./annotation_file \
+    --prefix NC000913.3
+```
+
+This writes:
+
+```text
+annotation_file/NC000913.3.gff
+annotation_file/NC000913.3.fasta
+annotation_file/NC000913.3.gtf
+```
+
+Use `--mode genbank` or `--mode gff3` when the input extension is unusual and cannot be auto-detected.
+
+The module also includes `get_uniprot_from_ncbi_gene(gene_id)`, which queries NCBI Entrez XML records and returns the matching UniProtKB/Swiss-Prot accession when available. Entrez credentials can be supplied through environment variables or `entrez.json`:
+
+```json
+{
+    "ENTREZ_EMAIL": "your_email@example.com",
+    "ENTREZ_API_KEY": "your_api_key"
+}
+```
 
 **Comparative re-annotation** (`reannotate_gb.py`):
 

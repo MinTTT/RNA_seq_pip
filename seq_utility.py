@@ -65,8 +65,9 @@ def find_fq(dir_name, suffix=None):
     samples_dict = {}
     for file in reads_files:
         # check the file name
-        # paired number can be: .1/.2; R1/R2; _1/_2; _R1/_R2; _1_/_2_; _R1_/_R2_; 1/2; R1/R2;
-        match = re.match(r'(.+)([._][Rr]?[12])(\..+)?$', file)
+        # paired number can be: .1/.2, _1/_2, or _R1/_R2. An optional
+        # trailing counter such as _001 is retained as part of the filename.
+        match = re.match(r'(.+?)([._][Rr]?[12])((?:_\d+)?\..+)$', file)
         # match = re.match(r'(.+)([._][Rr][12])(\..+)?$', file)
         if match:
             sample_name, paired_num, suffix = match.groups()

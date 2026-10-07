@@ -298,17 +298,6 @@ class RNASeqAnalyzer:
             self.indexed_reference_dir = os.path.join(self.output_dir, index_dir_name)
             self.append_to_log(f'[{self.sample_name}] -> Index dir existed: {self.indexed_reference_dir}')
 
-        # cmd_copy_ref = f'cp {self.reference_file_path} ' \
-        #                f'{os.path.join(self.output_dir, self.reference_file_name)}'
-
-        # # update the reference file ps
-        # self.reference_file_path = os.path.join(self.output_dir, self.reference_file_name)
-        # self.append_to_log(f'[{self.sample_name}] -> Copy Reference: {cmd_copy_ref}')
-        # status1 = self.cmd_shell(cmd_copy_ref)
-        # if status1.returncode != 0:
-        #     print(f'[{self.sample_name}] -> Error! Copy reference failed!')
-        #     self.append_to_log(f'[{self.sample_name}] -> Error! Copy reference failed!')
-        #     exit(1)
 
         # mapping
         # find bam file first, if not found, do mapping
@@ -320,16 +309,16 @@ class RNASeqAnalyzer:
                             f' -U {self.seq_data_ps1} ' \
                             f'-S {self.sam_file_ps}'
             else:  # paired reads
+                unmapped_pairs_ps = os.path.join(self.output_dir, f'{self.sample_name}_unmapped_pairs.%.fastq.gz')
                 if align_mode == 'default':
-                    cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
+                    cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-conc-gz {unmapped_pairs_ps} ' + \
                                 f'--no-mixed --no-discordant ' \
                                 f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
                                 f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
                                 f'-S {self.sam_file_ps}'
                 elif align_mode == 'strict':
-
-                    cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-gz {self.output_dir} ' + \
-                                f'--very-sensitive-local -X 1000 -I 18 --no-1mm-upfront --score-min G,9,8 --no-mixed --no-discordant ' \
+                    cmd_align = f'bowtie2 -p {self.bowtie_pars["-p"]} --un-conc-gz {unmapped_pairs_ps} ' + \
+                                f'--very-sensitive-local -X 1500 -I 18 --no-1mm-upfront --score-min G,9,8 --no-mixed --no-discordant ' \
                                 f'-N {self.bowtie_pars["-N"]} -x {self.indexed_base_name} ' \
                                 f' -1 {self.seq_data_ps1} -2 {self.seq_data_ps2} ' \
                                 f'-S {self.sam_file_ps}'

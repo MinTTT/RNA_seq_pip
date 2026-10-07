@@ -4,6 +4,8 @@ CPU=8
 DEDUO=false
 RUN_PIPELINE=true
 CLEAN_OUTPUT_DIR="./cleanData"
+ALIGN_MODE="strict"
+THREADING_MAX=1
 CLEAN_SCRIPT="$SCRIPT_DIR/miniBac-seq_raw_data_process_clean_demix_20250401.py"
 STATISTICS_SCRIPT="$SCRIPT_DIR/miniBac-seq_pip_20250105.py"
 RET_OUTPUT_DIR="./"
@@ -17,10 +19,11 @@ usage() {
     echo "  -f, --fasta-file     Path to reference genome FASTA file"
     echo ""
     echo "Optional arguments:"
-    echo "  -c, --cpu            Number of CPUs to use (default: 8)"
+    echo "  -c, --cpu            Number of CPUs to use (default: 1)"
     echo "  -d, --dedup          Enable deduplication during fastp processing"
     echo "  -r, --run-pipeline   Run pipeline without prompts"
-    echo "  -t, --threading-max  Max threading number for alignment (default: 8)"
+    echo "  -t, --threading-max  Max threading number for alignment (default: 1)"
+    echo "  -a, --align-mode     Alignment mode: default or strict (default: strict)"
     echo "  -o, --clean-output   Output directory for cleaned data (default: ./cleanData)"
     echo "  -p, --ret-output     Output directory for results (default: ./)"
     echo "  -h, --help           Display this help message"
@@ -58,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             THREADING_MAX="$2"
             shift 2
             ;;
+        -a|--align-mode)
+            ALIGN_MODE="$2"
+            shift 2
+            ;;
         -o|--clean-output)
             CLEAN_OUTPUT_DIR="$2"
             shift 2
@@ -75,6 +82,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+case "$ALIGN_MODE" in
+    default|strict)
+        ;;
+    *)
+        echo "Error: --align-mode must be 'default' or 'strict'."
+        exit 1
+        ;;
+esac
 
 # Function to print section headers
 print_section() {
@@ -103,7 +119,7 @@ fi
 # step 2: run the pipeline
 print_section "Step 2: Running the analysis pipeline"
 echo "Running pipeline script..."
-ALIGN_CMD="python \"$STATISTICS_SCRIPT\" -gff \"$GFF_FILE\" -fa \"$FASTA_FILE\" -o \"$RET_OUTPUT_DIR\" -fq \"$CLEAN_OUTPUT_DIR\""
+ALIGN_CMD="python \"$STATISTICS_SCRIPT\" -gff \"$GFF_FILE\" -fa \"$FASTA_FILE\" -o \"$RET_OUTPUT_DIR\" -fq \"$CLEAN_OUTPUT_DIR\" -tm $THREADING_MAX -am \"$ALIGN_MODE\""
 if [[ "$RUN_PIPELINE" == "true" ]]; then
     ALIGN_CMD="$ALIGN_CMD -r"
 fi

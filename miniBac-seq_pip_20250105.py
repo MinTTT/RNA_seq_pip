@@ -43,6 +43,7 @@ output_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-se
 fastq_dir = r'/media/fulab/fulab-nas/chupan/fulab_zc_1/seq_data/20251222_RNA-seq/cleaned_data'
 prefix = ''
 threading_max = 3
+align_mode = 'strict'
 bowtie_pars = {"-p": 32}
 
 import argparse as arg
@@ -62,6 +63,9 @@ parser.add_argument('-fq', '--fastq_dir', type=str, default=fastq_dir,
 # threading max
 parser.add_argument('-tm', '--threading_max', type=int, default=threading_max,
                     help='The max threading number.')
+# alignment mode
+parser.add_argument('-am', '--align_mode', choices=['default', 'strict'], default=align_mode,
+                    help='Bowtie2 alignment mode: default or strict. Default: strict.')
 # run pipeline will not have break
 parser.add_argument('-r', '--run_pipeline', action='store_true')
 
@@ -78,6 +82,8 @@ if args.fastq_dir:
     fastq_dir = args.fastq_dir
 if args.threading_max:
     threading_max = args.threading_max
+if args.align_mode:
+    align_mode = args.align_mode
 # run pipeline will not have break
 run_pipeline = args.run_pipeline
 
@@ -164,7 +170,7 @@ for sample in samples:
                                  output_dir=output_dir,
                                  ref_ps=fasta_ps, gff_ps=gff_ps)
     # mapping
-    process_pip.seq_data_align(align_mode='strict')
+    process_pip.seq_data_align(align_mode=align_mode)
     thread_exit.append(False)
     # statistic
     # thread.start_new_thread(stat_thread, (process_pip, thread_init, thread_exit))
@@ -183,17 +189,6 @@ for statistic in statistic_list:
 
 # ================== Collect statistics Start ==================
 # copy statistics files to the output directory, and summarize the alignment quality of all samples
-"""
-Read Log file
-Line: "Input files DNA, FASTA:, "
-extract one line after it  -> reference genome
-Line: "27008777 reads; of these:"
-extract 27008777 as reads number
-Line: "87.55% overall alignment rate"
-extract 87.55% as alignment rate
-
-| sample name | fastq file 1 | fastq file 2 | fasta file name | gff file name | reads number | alignment rate|
-"""
 sample_name = []
 fastq_1 = []
 fastq_2 = []
@@ -201,8 +196,12 @@ fasta_file_name = []
 gff_file_name = []
 reads_num_list = []
 alignment_rate_list = []
+rrna_ratio_list = []
+trna_ratio_list = []
 reads_num_map = 'reads; of these:'
 alignment_rate_map = 'overall alignment rate'
+rrna_ratio_map = 'rRNA ratio:'
+trna_ratio_map = 'tRNA ratio:'
 
 for sample in samples:
     cmd_cp = f"cp {os.path.join(output_dir, prefix + sample + '_output', prefix + sample + '_CDS_expression_statistic.csv')} " + \
@@ -214,6 +213,7 @@ for sample in samples:
     with open(read_log_file, 'r') as f:
         lines = f.readlines()
         reads_num, alignment_rate = None, None
+        rrna_ratio, trna_ratio = None, None
         for line in lines:
             if reads_num_map in line:
                 # 27008777 reads; of these:
@@ -226,8 +226,18 @@ for sample in samples:
                 alignment_rate = re.search(r'\d+.+%', line)
                 if alignment_rate:
                     alignment_rate = alignment_rate.group()
+            elif rrna_ratio_map in line:
+                rrna_ratio = re.search(r'rRNA ratio:\s*([\d.]+%)', line)
+                if rrna_ratio:
+                    rrna_ratio = rrna_ratio.group(1)
+            elif trna_ratio_map in line:
+                trna_ratio = re.search(r'tRNA ratio:\s*([\d.]+%)', line)
+                if trna_ratio:
+                    trna_ratio = trna_ratio.group(1)
         reads_num_list.append(reads_num)
         alignment_rate_list.append(alignment_rate)
+        rrna_ratio_list.append(rrna_ratio)
+        trna_ratio_list.append(trna_ratio)
         sample_name.append(prefix+sample)
         fastq_1.append(os.path.basename(samples_dict[sample]['R1']))
         fastq_2.append(os.path.basename(samples_dict[sample]['R2']))
@@ -241,7 +251,9 @@ align_table = pd.DataFrame({'sample name': sample_name,
                             'fasta file name': fasta_file_name,
                             'gff file name': gff_file_name,
                             'reads number': reads_num_list,
-                            'alignment rate': alignment_rate_list})
+                            'alignment rate': alignment_rate_list,
+                            'rRNA ratio': rrna_ratio_list,
+                            'tRNA ratio': trna_ratio_list})
 # write to csv file
 today = pd.Timestamp.now().strftime('%Y%m%d-%H%M')
 align_table.to_csv(os.path.join(output_dir, f'{today}_alignment_statistic.csv'), index=False)

@@ -41,25 +41,7 @@ for sample in np.arange(1, 6):
 
 #%%
 
-# genome_range = [561894, 565429]  # oriC aslA
-# genome_range = [561735, 564227]  # aslA
 
-
-
-# genome_range = [1593243, 1600695]  # oriC yaiT
-# genome_range = [1595019, 1598010]  # oriC yaiT
-
-# genome_range = [2684545, 2693896]  # ter ynaE
-# genome_range = [2685221, 2687760]  # ter ynaE
-# genome_range = [2685812, 2687322]  # ter ynaE
-
-# genome_range = [573827, 582244]  # oriC yigE
-# genome_range = [575507, 579920]  # oriC yigE
-# genome_range = [577687, 578968]  # oriC yigE
-
-# genome_range = [653675, 660369]  # oriC yiiD (fabY)
-# genome_range = [655979, 657049]  # oriC yiiD (fabY)
-# genome_range = [655979, 656830]  # oriC yiiD
 genome_range = [2410109, 2412697]  # ptsG
 # genome_range = [2057376, 2061654]  # attB lambda
 
